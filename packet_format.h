@@ -64,15 +64,14 @@ union upack {
 // Target type packet. It will send just the
 // location of the target.
 struct gstpacket {
-    bool type;  // Target or Control command? T or C?
+    char type;  // Target or Control command? T or C?
     float tLat; // Target latitude.
     float tLong;    // Target longitude.
-    uint32_t checkSum;  // Check sum.
-}; // Size of gstpacket is 13 bytes
+}; // Size of gstpacket is 9 bytes
 
 union gstpack {
     struct gstpacket packet;   // Structure as defined above.
-    char str[13];  // Same memory addressable by byte.
+    char str[9];  // Same memory addressable by byte.
 };
 
 //
@@ -80,21 +79,22 @@ union gstpack {
 // information on how to operate in
 // manual mode.
 struct gscpacket {
-    bool type;          // Target or Control command? T or C?
-    uint8_t throttle;   // Desired throttle level.
+    char type;          // Target or Control command? T or C? (or anything else indicates bad target data)
+	char flyordrive; 	// Flying or driving?
+	char fdConfirm;		// Confirmation of flying or driving.
+    float throttle;   // Desired throttle level.
     float roll;         // Desired roll angle.
     float pitch;        // Desired pitch angle.
     float yaw;          // Desired yaw angle.
     bool payloadRelease;    // Release the payload command.
     bool prConfirm;         // Confirmation to release payload command.
-    uint32_t checkSum;      // Check sum.
-}; // Size of gscpacket is 20 bytes.
+}; // Size of gscpacket is 21 bytes.
 
 //
 // Associated Union for gscpacket
 union gscpack {
     struct gscpacket packet;   // Structure as defined above.
-    char str[20];  // Same memory byte addressable.
+    char str[21];  // Same memory byte addressable.
 };
 
 #endif /* PACKET_FORMAT_H_ */
