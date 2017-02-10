@@ -27,6 +27,7 @@
 #include "driverlib/interrupt.h"
 #include "driverlib/i2c.h"
 #include "driverlib/pin_map.h"
+#include "driverlib/pwm.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/systick.h"
 #include "driverlib/timer.h"
@@ -650,3 +651,57 @@ void InitAltimeter(uint32_t SysClockSpeed)
     UARTprintf("Done!\n\r");
 }
 
+
+
+/*
+ * Initialization for the PWM module 0 for the
+ * air motors. PWM M0 pins 0-3 wll be used.
+ */
+void InitAirMtrs(uint32_t sysClockSpeed)
+{
+    uint32_t speed;
+
+    UARTprintf("Initializing air motors...\n\r");
+
+    //
+    // Turn on the peripherals for the PWM.
+    SysCtlPeripheralEnable(PWM_PERIPHERAL);
+    SysCtlPeripheralEnable(PWM_GPIO_PERIPH);
+
+    //
+    // Configure the GPIO pins.
+    GPIOPinConfigure(GPIO_PF1_M0PWM1);
+    GPIOPinConfigure(GPIO_PF2_M0PWM2);
+    GPIOPinConfigure(GPIO_PF3_M0PWM3);
+    GPIOPinConfigure(GPIO_PG0_M0PWM4);
+    GPIOPinTypePWM(PWM_GPIO_PORT1, PWM_MTR_1 | PWM_MTR_2 | PWM_MTR_3);
+    GPIOPinTypePWM(PWM_GPIO_PORT2, PWM_MTR_4);
+
+    //
+    // Frequency of PWM.
+    speed = (sysClockSpeed / PWM_FREQUENCY) - 1;
+
+    //
+    // Configure the PWM.
+    PWMGenConfigure(PWM0_BASE, PWM_GEN_0, PWM_GEN_MODE_DOWN);
+    PWMGenConfigure(PWM0_BASE, PWM_GEN_1, PWM_GEN_MODE_DOWN);
+    PWMGenConfigure(PWM0_BASE, PWM_GEN_2, PWM_GEN_MODE_DOWN);
+
+    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_0, speed);
+    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, speed);
+    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_2, speed);
+
+    //
+    // Initialize pulse to 50%
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
+
+    //
+    // Set the output PWM modules.
+    PWMOutputState(PWM0_BASE, PWM_OUT_1_BIT | PWM_OUT_2_BIT | PWM_OUT_3_BIT |
+                   PWM_OUT_4_BIT, true);
+
+    UARTprintf("Done!\n\r");
+}

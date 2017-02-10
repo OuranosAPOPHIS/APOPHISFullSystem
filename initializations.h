@@ -47,4 +47,9 @@ void InitSolenoidEnablePins(uint32_t SysClockSpeed);
 void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation);
 void InitAltimeter(uint32_t SysClockSpeed);
 
+/*
+ * PWM air motor initializations.
+ */
+void InitAirMtrs(uint32_t sysClockSpeed);
+
 #endif /* INITIALIZATIONS_H_ */

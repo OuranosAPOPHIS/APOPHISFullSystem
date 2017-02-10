@@ -27,6 +27,7 @@
 #include "driverlib/i2c.h"
 #include "driverlib/interrupt.h"
 #include "driverlib/pin_map.h"
+#include "driverlib/pwm.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/systick.h"
 #include "driverlib/timer.h"
@@ -49,7 +50,7 @@
 //
 //*****************************************************************************
 #define CONSOLE_ACTIVATED true
-#define RADIO_ACTIVATED true
+#define RADIO_ACTIVATED false
 #define GPS_ACTIVATED true
 #define GNDMTRS_ACTIVATED false
 #define SOLARS_ACTIVATED false
@@ -57,6 +58,7 @@
 #define SOLENOIDS_ACTIVATED false
 #define IMU_ACTIVATED true
 #define ALTIMETER_ACTIVATED false
+#define AIRMTRS_ACTIVATED true
 
 //*****************************************************************************
 //
@@ -241,6 +243,13 @@ bool g_PrintRawBMIData = false;
 uint8_t g_BME280RawData[7];
 uint8_t *g_ptrBME280RawData = &g_BME280RawData[0];
 
+/*
+ * Globals to store the throttle level of the air motors.
+ */
+//
+// Air motor 1 throttle on PF1
+uint32_t g_mtr1Throttle = ZEROTHROTTLE;
+
 //*****************************************************************************
 //
 // Start of program.
@@ -322,8 +331,15 @@ int main(void) {
      if (IMU_ACTIVATED)
          InitIMU(g_SysClockSpeed, g_offsetData);
 
+     //
+     // Initialize the pressure sensor if enabled.
      if (ALTIMETER_ACTIVATED)
          InitAltimeter(g_SysClockSpeed);
+
+     //
+     // Initialize the air motors if activated.
+     if (AIRMTRS_ACTIVATED)
+         InitAirMtrs(g_SysClockSpeed);
 
      //
      // Before starting program, wait for a button press on either switch.
@@ -342,12 +358,14 @@ int main(void) {
      SysTickEnable();
 
      //
+     // Activate the motors.
+     PWMGenEnable(PWM0_BASE, PWM_GEN_0);
+     PWMGenEnable(PWM0_BASE, PWM_GEN_1);
+     PWMGenEnable(PWM0_BASE, PWM_GEN_2);
+
+     //
      // Print menu.
      Menu('M');
-
-     //UARTprintf("Offset Data:\n\r");
-     //UARTprintf("%d, %d, %d\n\r", g_offsetData[0], g_offsetData[1], g_offsetData[2]);
-     //UARTprintf("%d, %d, %d\n\r", g_offsetData[3], g_offsetData[4], g_offsetData[5]);
 
      //
      // Program start.
@@ -390,8 +408,8 @@ int main(void) {
 
          //
          // Check if it is time to send a packet to the ground station.
-         if (g_SendPacket)
-            SendPacket();
+        // if (g_SendPacket)
+          //  SendPacket();
      }
 
      //
@@ -1046,7 +1064,10 @@ void Menu(char charReceived)
         UARTprintf("A - Trigger solar panel ADC.\n\r");
         UARTprintf("1 - Trigger ultra sonic sensor #1.\n\r");
         UARTprintf("2 - Trigger ultra sonic sensor #2.\n\r");
-        UARTprintf("S - Activate solenoid enable pins.\n\r");
+        UARTprintf("Y - Activate solenoid enable pins.\n\r");
+        UARTprintf("W - Increase throttle.\n\r");
+        UARTprintf("S - Decrease throttle.\n\r");
+        UARTprintf("X - Stop the motors.\n\r");
         UARTprintf("Q - Quit this program.\n\r");
         break;
     }
@@ -1110,13 +1131,43 @@ void Menu(char charReceived)
 
         break;
     }
-    case 'S': // Activate the solenoids
+    case 'Y': // Activate the solenoids
     {
         ActivateSolenoids();
         break;
     }
+    case 'W': // Increase throttle of air motors.
+    {
+        g_mtr1Throttle += 100;
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtr1Throttle);
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtr1Throttle);
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtr1Throttle);
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtr1Throttle);
+        UARTprintf("Throttle Increase: %d\n\r", g_mtr1Throttle);
+        break;
     }
-
+    case 'S': // Decrease throttle of air motors.
+    {
+        g_mtr1Throttle -= 100;
+        if (g_mtr1Throttle < ZEROTHROTTLE)
+            g_mtr1Throttle += 100;
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtr1Throttle);
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtr1Throttle);
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtr1Throttle);
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtr1Throttle);
+        UARTprintf("Throttle Decrease: %d\n\r", g_mtr1Throttle);
+        break;
+    }
+    case 'X': // kill the throttle.
+    {
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
+        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
+        g_mtr1Throttle = ZEROTHROTTLE;
+        break;
+    }
+    }
     //
     // Reset the flag.
     g_ConsoleFlag = false;
