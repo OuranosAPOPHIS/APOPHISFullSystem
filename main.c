@@ -91,6 +91,7 @@ void ActivateSolenoids(void);
 void DeactivateSolenoids(void);
 void SendPacket(void);
 void ProcessIMUData(void);
+void ProcessMagData(void);
 void WaitForButtonPress(uint8_t ButtonState);
 
 //*****************************************************************************
@@ -242,6 +243,10 @@ bool g_PrintRawBMIData = false;
 // Storage for the BME280 raw data and its pointer.
 uint8_t g_BME280RawData[7];
 uint8_t *g_ptrBME280RawData = &g_BME280RawData[0];
+
+//
+// Global flag for when mag data is ready.
+bool g_MagDataFlag = false;
 
 /*
  * Globals to store the throttle level of the air motors.
@@ -402,14 +407,19 @@ int main(void) {
              ProcessIMUData();
 
          //
+         // Check if mag data is ready.
+         if (g_MagDataFlag)
+             ProcessMagData();
+
+         //
          // Check if pressure or temperature data is ready.
          if (g_BME280Ready)
              GetBME280RawData(BOOST_I2C, g_ptrBME280RawData);
 
          //
          // Check if it is time to send a packet to the ground station.
-        // if (g_SendPacket)
-          //  SendPacket();
+         //if (g_SendPacket)
+           // SendPacket();
      }
 
      //
@@ -865,8 +875,21 @@ void BMI160IntHandler(void)
     GPIOIntClear(BOOST_GPIO_PORT_INT, ui32Status);
 
     //
-    // Trigger reception of data in main.
-    g_IMUDataFlag = true;
+    // Check which interrupt fired.
+    if (ui32Status == BOOST_GPIO_INT)
+    {
+        //
+        // IMU data is ready.
+        g_IMUDataFlag = true;
+    }
+    else if (ui32Status == MAG_GPIO_INT)
+    {
+        //
+        // Magnetometer data is ready.
+        g_MagDataFlag = true;
+    }
+
+
 }
 
 //*****************************************************************************
@@ -1595,7 +1618,7 @@ void ProcessIMUData(void)
 
     //
     // Check what status returned.
-    if (status == (BMI160_ACC_RDY | BMI160_GYR_RDY | BMI160_NVM_RDY))
+    if ((status & 0xC0) == (BMI160_ACC_RDY | BMI160_GYR_RDY))
     {
         //
         // Then get the data for both the accel and gyro.
@@ -1633,31 +1656,6 @@ void ProcessIMUData(void)
             g_loopCount = false;
         }
     }
-    else if (status == BMI160_MAG_RDY || status == (BMI160_MAG_RDY | BMI160_NVM_RDY))
-    {
-        //
-        // Magnetometer data is ready. So get it.
-        I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_MAG_X, 4, IMUData);
-
-        //
-        // Assign it to global variables.
-        g_magDataRaw[0] = (IMUData[1] << 8) + IMUData[0];
-        g_magDataRaw[1] = (IMUData[3] << 8) + IMUData[2];
-        g_magDataRaw[2] = (IMUData[5] << 8) + IMUData[4];
-        g_magDataRaw[3] = (IMUData[7] << 8) + IMUData[6];
-
-        //
-        // Loop counter, print once per second.
-        if (g_loopCount && g_PrintRawBMIData)
-        {
-            UARTprintf("MagX = %d\n\rMagY = %d\n\r", g_magDataRaw[0], g_magDataRaw[1]);
-            UARTprintf("MagZ = %d\n\r", g_magDataRaw[2]);
-
-            //
-            // Reset loop count.
-            g_loopCount = false;
-        }
-    }
 
     //
     // Reset the flag
@@ -1675,4 +1673,44 @@ void ProcessIMUData(void)
         TurnOnLED(1);
         g_LED1On = true;
     }
+}
+
+void ProcessMagData(void)
+{
+    uint8_t IMUData[8];
+    uint8_t status;
+
+    //
+    // First check the status for which data is ready.
+    I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
+
+   if((status && 0x20) == BMI160_MAG_RDY)
+   {
+       //
+       // Magnetometer data is ready. So get it.
+       I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_MAG_X, 4, IMUData);
+
+       //
+       // Assign it to global variables.
+       g_magDataRaw[0] = (IMUData[1] << 8) + IMUData[0];
+       g_magDataRaw[1] = (IMUData[3] << 8) + IMUData[2];
+       g_magDataRaw[2] = (IMUData[5] << 8) + IMUData[4];
+       g_magDataRaw[3] = (IMUData[7] << 8) + IMUData[6];
+
+       //
+       // Loop counter, print once per second.
+       if (g_loopCount && g_PrintRawBMIData)
+       {
+           UARTprintf("MagX = %d\n\rMagY = %d\n\r", g_magDataRaw[0], g_magDataRaw[1]);
+           UARTprintf("MagZ = %d\n\r", g_magDataRaw[2]);
+
+           //
+           // Reset loop count.
+           g_loopCount = false;
+       }
+   }
+
+   //
+   // Reset flag.
+   g_MagDataFlag = false;
 }

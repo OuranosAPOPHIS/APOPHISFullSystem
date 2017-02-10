@@ -23,6 +23,7 @@
 // Default address is 0x68, but TI
 // set this up as 0x69.
 #define BMI160_ADDRESS 0x69
+#define BMM150_ADDRESS 0x13
 
 /*
  * Define the relevant register addresses.
@@ -40,6 +41,7 @@
 #define BMI160_GYR_CONFIG 0x42
 #define BMI160_GYR_RANGE 0x43
 #define BMI160_MAG_CONFIG 0x44
+#define BMI160_MAG_IF 0x4B // 5 bytes
 #define BMI160_INT_ENABLE 0x50 // 3 bytes
 #define BMI160_INT_OUT_CTRL 0x53
 #define BMI160_INT_LATCH 0x54
@@ -193,6 +195,13 @@
 #define BMI160_MAG_250_HZ 0x09
 #define BMI160_MAG_500_HZ 0x0A
 #define BMI160_MAG_1000_HZ 0x0B
+
+/*
+ * Register: MAG_IF
+ *
+ */
+#define BMI160_MAG_ADDRESS 0x13
+#define BMI160_MAG_BURST_READ 0x03
 
 /*
  * Register: INT_EN
@@ -426,6 +435,7 @@
 #define BMI160_SOFT_RESET 0xB1
 #define BMI160_ACC_NORMAL_MODE_SET 0x11
 #define BMI160_GYR_NORMAL_MODE_SET 0x15
+#define BMI160_MAG_NORMAL_MODE_SET 0x19
 
 //*****************************************************************************
 //
@@ -433,9 +443,11 @@
 //
 //*****************************************************************************
 //
-// Initialization Function
-void InitBMI160(uint32_t I2C_BASE, uint8_t AccelRate, uint8_t AccelAccuracy,
+// Initialization Functions
+void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
                 uint8_t GyroRate, uint8_t GyroAccuracy, uint8_t MagRate, uint8_t *offsetValues);
+
+void InitBMM150(uint32_t I2C_base);
 
 
 #endif /* BMI160_H_ */

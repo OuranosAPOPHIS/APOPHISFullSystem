@@ -37,6 +37,7 @@
 
 #include "bmi160.h"
 #include "bme280.h"
+#include "i2c_driver.h"
 
 //*****************************************************************************
 //
@@ -564,12 +565,19 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation)
     GPIOPinTypeI2CSCL(BOOST_GPIO_PORT_I2C, BOOST_GPIO_SCL);
 
     //
-    // Configure the interrupt on pin PC6.
+    // Configure the IMU interrupt on pin PC6.
     GPIOPinTypeGPIOInput(BOOST_GPIO_PORT_INT, BOOST_GPIO_INT);
     GPIOIntTypeSet(BOOST_GPIO_PORT_INT, BOOST_GPIO_INT, GPIO_RISING_EDGE);
+
+    //
+    // Configure the magnetometer interrupt on pin PC7.
+    GPIOPinTypeGPIOInput(BOOST_GPIO_PORT_INT, MAG_GPIO_INT);
+    GPIOIntTypeSet(BOOST_GPIO_PORT_INT, MAG_GPIO_INT, GPIO_RISING_EDGE);
+
+    //
+    // Enable and register the function for the interrupt.
     GPIOIntRegister(BOOST_GPIO_PORT_INT, BMI160IntHandler);
     GPIOIntEnable(BOOST_GPIO_PORT_INT, BOOST_GPIO_INT);
-    IntEnable(BOOST_INT);
 
     //
     // Disable the I2C module for configuration.
@@ -595,7 +603,11 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation)
     // accelerometer and gyro and 16 Hz for the magnetometer,
     // +/-2g setting on the accelerometer and 2000 deg/s for the gyro.
     InitBMI160(BOOST_I2C, BMI160_ACC_25_HZ, BMI160_ACC_RANGE_2G, BMI160_GYR_25_HZ,
-               BMI160_GYR_RATE_2000, BMI160_MAG_16_HZ, offsetCompensation);
+               BMI160_GYR_RATE_2000, BMI160_MAG_31_HZ, offsetCompensation);
+
+    //
+    // Initialize the BMM150 to have a 25 Hz update rate.
+    InitBMM150(BOOST_I2C);
 
     //
     // Turn off interrupts, since I2CWrite turns them on.

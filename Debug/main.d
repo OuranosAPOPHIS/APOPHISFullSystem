@@ -12,6 +12,7 @@ main.obj: C:/TivaWare/TM4C1294XL/driverlib/gpio.h
 main.obj: C:/TivaWare/TM4C1294XL/driverlib/i2c.h
 main.obj: C:/TivaWare/TM4C1294XL/driverlib/interrupt.h
 main.obj: C:/TivaWare/TM4C1294XL/driverlib/pin_map.h
+main.obj: C:/TivaWare/TM4C1294XL/driverlib/pwm.h
 main.obj: C:/TivaWare/TM4C1294XL/driverlib/sysctl.h
 main.obj: C:/TivaWare/TM4C1294XL/driverlib/systick.h
 main.obj: C:/TivaWare/TM4C1294XL/driverlib/timer.h
@@ -38,6 +39,7 @@ C:/TivaWare/TM4C1294XL/driverlib/gpio.h:
 C:/TivaWare/TM4C1294XL/driverlib/i2c.h: 
 C:/TivaWare/TM4C1294XL/driverlib/interrupt.h: 
 C:/TivaWare/TM4C1294XL/driverlib/pin_map.h: 
+C:/TivaWare/TM4C1294XL/driverlib/pwm.h: 
 C:/TivaWare/TM4C1294XL/driverlib/sysctl.h: 
 C:/TivaWare/TM4C1294XL/driverlib/systick.h: 
 C:/TivaWare/TM4C1294XL/driverlib/timer.h: 

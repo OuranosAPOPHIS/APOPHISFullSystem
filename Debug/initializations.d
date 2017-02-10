@@ -12,6 +12,7 @@ initializations.obj: C:/TivaWare/TM4C1294XL/driverlib/gpio.h
 initializations.obj: C:/TivaWare/TM4C1294XL/driverlib/interrupt.h
 initializations.obj: C:/TivaWare/TM4C1294XL/driverlib/i2c.h
 initializations.obj: C:/TivaWare/TM4C1294XL/driverlib/pin_map.h
+initializations.obj: C:/TivaWare/TM4C1294XL/driverlib/pwm.h
 initializations.obj: C:/TivaWare/TM4C1294XL/driverlib/sysctl.h
 initializations.obj: C:/TivaWare/TM4C1294XL/driverlib/systick.h
 initializations.obj: C:/TivaWare/TM4C1294XL/driverlib/timer.h
@@ -20,6 +21,7 @@ initializations.obj: C:/TivaWare/TM4C1294XL/utils/uartstdio.h
 initializations.obj: C:/CCS/ccsv7/tools/compiler/ti-cgt-arm_16.9.0.LTS/include/stdarg.h
 initializations.obj: ../bmi160.h
 initializations.obj: ../bme280.h
+initializations.obj: ../i2c_driver.h
 
 ../initializations.c: 
 ../APOPHIS_pin_map.h: 
@@ -33,6 +35,7 @@ C:/TivaWare/TM4C1294XL/driverlib/gpio.h:
 C:/TivaWare/TM4C1294XL/driverlib/interrupt.h: 
 C:/TivaWare/TM4C1294XL/driverlib/i2c.h: 
 C:/TivaWare/TM4C1294XL/driverlib/pin_map.h: 
+C:/TivaWare/TM4C1294XL/driverlib/pwm.h: 
 C:/TivaWare/TM4C1294XL/driverlib/sysctl.h: 
 C:/TivaWare/TM4C1294XL/driverlib/systick.h: 
 C:/TivaWare/TM4C1294XL/driverlib/timer.h: 
@@ -41,3 +44,4 @@ C:/TivaWare/TM4C1294XL/utils/uartstdio.h:
 C:/CCS/ccsv7/tools/compiler/ti-cgt-arm_16.9.0.LTS/include/stdarg.h: 
 ../bmi160.h: 
 ../bme280.h: 
+../i2c_driver.h: 

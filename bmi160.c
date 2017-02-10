@@ -43,7 +43,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
                 uint8_t GyroRate, uint8_t GyroAccuracy, uint8_t MagRate, uint8_t *offsetValues)
 {
     uint8_t txBuffer[2];
-    uint8_t state[3] = {0, 0, 0};
+    uint8_t state[5] = {0, 0, 0, 0, 0};
 
     //
     // First initiate a softreset to boot the device fresh.
@@ -76,6 +76,16 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 
     //
     // 80 ms delay after boot up of gyro
+    SysCtlDelay(16000 * 100);
+
+    //
+    // Next, boot up mag in normal mode.
+    txBuffer[0] = BMI160_CMD;
+    txBuffer[1] = BMI160_MAG_NORMAL_MODE_SET;
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    //
+    // 80 ms delay after boot up of mag
     SysCtlDelay(16000 * 100);
 
     //
@@ -145,13 +155,32 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     UARTprintf("(FOC CONF): 0x%x\n\r", state[0]);
 
     //
+    // Set up the mag interface.
+    txBuffer[0] = BMI160_MAG_IF;
+    txBuffer[1] = BMI160_MAG_ADDRESS;
+
+    //
+    // Write the setting to the device.
+    //I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    txBuffer[0] = BMI160_MAG_IF + 0x01;
+    txBuffer[1] = BMI160_MAG_BURST_READ;
+   // I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    //
+    // Check the configuration.
+    I2CRead(I2C_base, BMI160_ADDRESS, BMI160_MAG_IF, 5, state);
+    UARTprintf("(MAG IF): 0x%x, 0x%x, 0x%x, 0x%x, 0x%x\n\r", state[0], state[1], state[2], state[3], state[4]);
+
+
+    //
     // Set up the device interface as I2C primary and Mag on.
     txBuffer[0] = BMI160_IF_CONFIG;
     txBuffer[1] = BMI160_AUTO_MAG_ON;
 
     //
     // Write the setting to the device.
-    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    //I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
     //
     // Check the configuration.
@@ -165,7 +194,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 
     //
     // Configure the mag rate.
-    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+   // I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
     //
     // Check the configuration.
@@ -260,5 +289,40 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     UARTprintf("(ERR_REG): 0x%x\n\r", state[0]);
 }
 
+/*
+ * Initialization for the BMM150 magnetometer.
+ */
+void InitBMM150(uint32_t I2C_base)
+{
+    uint8_t txBuffer[2];
+    uint8_t state[1];
 
+    //
+    // Perform a soft reset.
+    txBuffer[0] = 0x4B;
+    txBuffer[1] = 0x82;
+    I2CBurstWrite(I2C_base, BMM150_ADDRESS, 2, txBuffer);
+
+    //
+    // Configure the rate of operation and power mode.
+    txBuffer[0] = 0x4C;
+    txBuffer[1] = 0x30;
+    I2CBurstWrite(I2C_base, BMM150_ADDRESS, 2, txBuffer);
+
+    //
+    // Check the error register for errors.
+    I2CRead(I2C_base, BMM150_ADDRESS, 0x4C, 1, state);
+    UARTprintf("(MAG 0x4C): 0x%x\n\r", state[0]);
+
+    //
+    // Configure the interrupt operation.
+    txBuffer[0] = 0x4E;
+    txBuffer[1] = 0xC5;
+    I2CBurstWrite(I2C_base, BMM150_ADDRESS, 2, txBuffer);
+
+    //
+    // Check the error register for errors.
+    I2CRead(I2C_base, BMM150_ADDRESS, 0x4E, 1, state);
+    UARTprintf("(MAG 0x4E): 0x%x\n\r", state[0]);
+}
 
