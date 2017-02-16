@@ -34,6 +34,7 @@
 #define BME280_PRES_RAW 0xF7 // 3 bytes
 #define BME280_TEMP_RAW 0xFA // 3 bytes
 #define BME280_HUM_RAW 0xFD // 2 bytes
+#define BME280_COMP_VALUES 0x88 // 18 bytes, read up to 3 bytes for temp, 12 bytes for temp and pres.
 
 /*
  * Register: Reset
@@ -122,7 +123,9 @@
 /*
  * Function Prototypes
  */
-void InitBME280(uint32_t I2C_base);
+void InitBME280(uint32_t I2C_base, int8_t *offsetValues);
 void GetBME280RawData(uint32_t I2C_base, uint8_t *rxBuffer);
+int32_t BME280_compensate_T_int32(int32_t adc_T, int32_t *t_fine, int8_t *offsetValues, uint8_t *dig_P2);
+uint32_t BME280_compensate_P_int64(int32_t adc_P, int32_t *t_fine, int8_t *offsetValues, uint8_t *dig_P1);
 
 #endif /* BME280_H_ */

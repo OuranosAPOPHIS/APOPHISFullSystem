@@ -625,7 +625,7 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation)
  * navigation. This results in an approximate
  * operational rate of 25Hz.
  */
-void InitAltimeter(uint32_t SysClockSpeed)
+void InitAltimeter(uint32_t SysClockSpeed, int8_t *offsetValues)
 {
     UARTprintf("Initializing BME280...\n\r");
 
@@ -650,7 +650,7 @@ void InitAltimeter(uint32_t SysClockSpeed)
 
     //
     // Initialize the BME280 sensor.
-    InitBME280(BOOST_I2C);
+    InitBME280(BOOST_I2C, offsetValues);
 
     //
     // Turn off interrupts, since I2CWrite turns them on.

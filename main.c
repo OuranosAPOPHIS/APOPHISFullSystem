@@ -33,6 +33,8 @@
 #include "driverlib/timer.h"
 #include "driverlib/uart.h"
 
+#include "sensorlib/comp_dcm.h"
+
 #include "buttons.h"
 
 #include "utils/uartstdio.h"
@@ -51,14 +53,14 @@
 //*****************************************************************************
 #define CONSOLE_ACTIVATED true
 #define RADIO_ACTIVATED false
-#define GPS_ACTIVATED true
+#define GPS_ACTIVATED false
 #define GNDMTRS_ACTIVATED false
 #define SOLARS_ACTIVATED false
 #define ULTRASONIC_ACTIVATED false
 #define SOLENOIDS_ACTIVATED false
 #define IMU_ACTIVATED true
-#define ALTIMETER_ACTIVATED false
-#define AIRMTRS_ACTIVATED true
+#define ALTIMETER_ACTIVATED true
+#define AIRMTRS_ACTIVATED false
 
 //*****************************************************************************
 //
@@ -99,6 +101,10 @@ void WaitForButtonPress(uint8_t ButtonState);
 // Global Variables
 //
 //*****************************************************************************
+
+//
+// Global Instance structure to manage the DCM state.
+tCompDCM g_sCompDCMInst;
 
 //
 // Radio packet to be sent to the ground station.
@@ -241,8 +247,21 @@ bool g_PrintRawBMIData = false;
 
 //
 // Storage for the BME280 raw data and its pointer.
-uint8_t g_BME280RawData[7];
-uint8_t *g_ptrBME280RawData = &g_BME280RawData[0];
+int8_t g_BME280RawData[7];
+int8_t *g_ptrBME280RawData = &g_BME280RawData[0];
+
+int8_t g_BME280OffsetValues[12];
+uint8_t g_BME280OffsetUnsigned[2];
+
+//
+// Floating format for pressure and temperature data.
+float g_Pressure;
+float g_Temp;
+
+//
+// global temperature fine value for BME280;
+int32_t g_t_fine;
+int32_t *g_p_t_fine = &g_t_fine;
 
 //
 // Global flag for when mag data is ready.
@@ -339,7 +358,16 @@ int main(void) {
      //
      // Initialize the pressure sensor if enabled.
      if (ALTIMETER_ACTIVATED)
-         InitAltimeter(g_SysClockSpeed);
+     {
+         //
+         // Initialize the altimeter.
+         InitAltimeter(g_SysClockSpeed, g_BME280OffsetValues);
+
+         //
+         // Set the offset values.
+         g_BME280OffsetUnsigned[0] = g_BME280OffsetValues[0];
+         g_BME280OffsetUnsigned[1] = g_BME280OffsetValues[3];
+     }
 
      //
      // Initialize the air motors if activated.
@@ -362,11 +390,14 @@ int main(void) {
      SysTickPeriodSet(g_SysClockSpeed / 2);
      SysTickEnable();
 
-     //
-     // Activate the motors.
-     PWMGenEnable(PWM0_BASE, PWM_GEN_0);
-     PWMGenEnable(PWM0_BASE, PWM_GEN_1);
-     PWMGenEnable(PWM0_BASE, PWM_GEN_2);
+     if (AIRMTRS_ACTIVATED)
+     {
+         //
+         // Activate the motors.
+         PWMGenEnable(PWM0_BASE, PWM_GEN_0);
+         PWMGenEnable(PWM0_BASE, PWM_GEN_1);
+         PWMGenEnable(PWM0_BASE, PWM_GEN_2);
+     }
 
      //
      // Print menu.
@@ -414,7 +445,43 @@ int main(void) {
          //
          // Check if pressure or temperature data is ready.
          if (g_BME280Ready)
-             GetBME280RawData(BOOST_I2C, g_ptrBME280RawData);
+         {
+             int32_t tempInt;
+             uint32_t presInt;
+             int32_t rawPress, rawTemp;
+             uint8_t rxBuffer[16];
+             uint8_t *ptrBuffer = &rxBuffer[0];
+
+             //
+             // Get the raw data.
+             GetBME280RawData(BOOST_I2C, ptrBuffer);
+
+             rawPress = (rxBuffer[0] << 12) | (rxBuffer[1] << 4) | (rxBuffer[2] >> 4);
+             rawTemp = (rxBuffer[3] << 12) | (rxBuffer[4] << 4) | (rxBuffer[5] >> 4);
+             //rawHumid = (rxBuffer[6] << 8) | (rxBuffer[7]);
+
+             //tempInt = *g_ptrBME280RawData << 20;
+
+             //
+             // Correct the temp data.
+             tempInt = BME280_compensate_T_int32(rawTemp, g_p_t_fine,
+                                                 g_BME280OffsetValues,
+                                                 g_BME280OffsetUnsigned);
+
+             //
+             // Calculate temp in degrees C, float format.
+             g_Temp = tempInt / 100.0f;
+
+             //
+             // Correct the pressure data.
+             presInt = BME280_compensate_P_int64(rawPress, g_p_t_fine,
+                                                 g_BME280OffsetValues,
+                                                 g_BME280OffsetUnsigned + 1);
+
+             //
+             // Calculate pressure in float form (Pascals).
+             g_Pressure = presInt / 256.0f;
+         }
 
          //
          // Check if it is time to send a packet to the ground station.
@@ -902,7 +969,7 @@ void BME280IntHandler(void)
     uint32_t ui32Status;
 
     //
-    // Get the interrput status.
+    // Get the interrupt status.
     ui32Status = TimerIntStatus(BME280_TIMER, true);
 
     //
