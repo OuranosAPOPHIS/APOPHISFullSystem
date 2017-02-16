@@ -42,6 +42,7 @@
 								<option id="com.ti.ccstudio.buildDefinitions.TMS470_16.9.compilerID.INCLUDE_PATH.1762251834" name="Add dir to #include search path (--include_path, -I)" superClass="com.ti.ccstudio.buildDefinitions.TMS470_16.9.compilerID.INCLUDE_PATH" valueType="includePath">
 									<listOptionValue builtIn="false" value="&quot;${CG_TOOL_ROOT}/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;C:\TivaWare\TM4C1294XL&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;E:\TM4C1294XL&quot;"/>
 								</option>
 								<option id="com.ti.ccstudio.buildDefinitions.TMS470_16.9.compilerID.DEBUGGING_MODEL.658947320" name="Debugging model" superClass="com.ti.ccstudio.buildDefinitions.TMS470_16.9.compilerID.DEBUGGING_MODEL" value="com.ti.ccstudio.buildDefinitions.TMS470_16.9.compilerID.DEBUGGING_MODEL.SYMDEBUG__DWARF" valueType="enumerated"/>
 								<option id="com.ti.ccstudio.buildDefinitions.TMS470_16.9.compilerID.DIAG_WARNING.1647585943" name="Treat diagnostic &lt;id&gt; as warning (--diag_warning, -pdsw)" superClass="com.ti.ccstudio.buildDefinitions.TMS470_16.9.compilerID.DIAG_WARNING" valueType="stringList">
@@ -61,12 +62,12 @@
 								<option id="com.ti.ccstudio.buildDefinitions.TMS470_16.9.linkerID.OUTPUT_FILE.367543563" name="Specify output file name (--output_file, -o)" superClass="com.ti.ccstudio.buildDefinitions.TMS470_16.9.linkerID.OUTPUT_FILE" value="&quot;${ProjName}.out&quot;" valueType="string"/>
 								<option id="com.ti.ccstudio.buildDefinitions.TMS470_16.9.linkerID.LIBRARY.1218089901" name="Include library file or command file as input (--library, -l)" superClass="com.ti.ccstudio.buildDefinitions.TMS470_16.9.linkerID.LIBRARY" valueType="libs">
 									<listOptionValue builtIn="false" value="&quot;libc.a&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;C:\TivaWare\TM4C1294XL\sensorlib\ccs\Debug\sensorlib.lib&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;C:\TivaWare\TM4C1294XL\driverlib\ccs\Debug\driverlib.lib&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;E:\TM4C1294XL\driverlib\ccs\Debug\driverlib.lib&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;E:\TM4C1294XL\sensorlib\ccs\Debug\sensorlib.lib&quot;"/>
 								</option>
 								<option id="com.ti.ccstudio.buildDefinitions.TMS470_16.9.linkerID.SEARCH_PATH.379332465" name="Add &lt;dir&gt; to library search path (--search_path, -i)" superClass="com.ti.ccstudio.buildDefinitions.TMS470_16.9.linkerID.SEARCH_PATH" valueType="libPaths">
 									<listOptionValue builtIn="false" value="&quot;${CG_TOOL_ROOT}/lib&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;C:\TivaWare\TM4C1294XL&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;E:\TM4C1294XL&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${CG_TOOL_ROOT}/include&quot;"/>
 								</option>
 								<option id="com.ti.ccstudio.buildDefinitions.TMS470_16.9.linkerID.DIAG_WRAP.1817005741" name="Wrap diagnostic messages (--diag_wrap)" superClass="com.ti.ccstudio.buildDefinitions.TMS470_16.9.linkerID.DIAG_WRAP" value="com.ti.ccstudio.buildDefinitions.TMS470_16.9.linkerID.DIAG_WRAP.off" valueType="enumerated"/>
