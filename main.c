@@ -52,14 +52,14 @@
 //
 //*****************************************************************************
 #define CONSOLE_ACTIVATED true
-#define RADIO_ACTIVATED false
+#define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
 #define GNDMTRS_ACTIVATED false
 #define SOLARS_ACTIVATED false
 #define ULTRASONIC_ACTIVATED false
 #define SOLENOIDS_ACTIVATED false
 #define IMU_ACTIVATED true
-#define ALTIMETER_ACTIVATED true
+#define ALTIMETER_ACTIVATED false
 #define AIRMTRS_ACTIVATED false
 
 //*****************************************************************************
@@ -108,7 +108,11 @@ tCompDCM g_sCompDCMInst;
 
 //
 // Radio packet to be sent to the ground station.
-union upack g_Pack;
+uTxPack g_Pack;
+
+//
+// Radio packet to be received from ground station.
+uRxPack g_sRxPack;
 
 //
 // Variable to store when USER LED 4 is on.
@@ -318,7 +322,7 @@ int main(void) {
      if (CONSOLE_ACTIVATED)
          InitConsole();
 
-     UARTprintf("Clock speed: %d\n\r", g_SysClockSpeed);
+     UARTprintf("Clock speed: %d\r\n", g_SysClockSpeed);
 
      //
      // Initialize the radio if turned on.
@@ -376,7 +380,8 @@ int main(void) {
 
      //
      // Before starting program, wait for a button press on either switch.
-     UARTprintf("Initialization Complete!\n\rPress left button to start.");
+     UARTprintf("Initialization Complete!\r\nPress left button to start.");
+
      WaitForButtonPress(LEFT_BUTTON);
 
      //
@@ -485,14 +490,14 @@ int main(void) {
 
          //
          // Check if it is time to send a packet to the ground station.
-         //if (g_SendPacket)
-           // SendPacket();
+         if (g_SendPacket)
+            SendPacket();
      }
 
      //
      // Program ending. Do any clean up that's needed.
 
-     UARTprintf("Goodbye!\n\r");
+     UARTprintf("Goodbye!\r\n");
 
      I2CMasterDisable(BOOST_I2C);
 
@@ -571,14 +576,53 @@ void ConsoleIntHandler(void)
 //*****************************************************************************
 void RadioIntHandler(void)
 {
+
+    // TODO: wtf?
+
+    static uint8_t ui8Index = 0;
+    static uint8_t ui8Magic[10] = {0};
+    static uint8_t ui8MagicCount;
+    static bool bValidData = false;
+    int32_t i32RxChar;
+
     //
     // Get the interrupt status and clear the associated interrupt.
     uint32_t ui32Status = UARTIntStatus(RADIO_UART, true);
     UARTIntClear(RADIO_UART, ui32Status);
 
     //
-    // Trigger the flag for analysis in main().
-    g_RadioFlag = true;
+    // Get the character received and send it to the console.
+    while(UARTCharsAvail(RADIO_UART))
+    {
+        i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
+        if (ui8Index >= (sizeof(uRxPack) - 1)) ui8Index = 0;
+        if (i32RxChar != -1) {
+            if (bValidData) {
+                //
+                // Get the chars over the UART.
+                g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
+                if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0') && ui8Index >= sizeof(tGSTPacket)) || (g_sRxPack.ui8Data[3] == 'C' && ui8Index >= sizeof(tGSCPacket))) {
+                    ui8Index = 0;
+                    g_RadioFlag = true;
+                    bValidData = false;
+                    break;
+                }
+            } else {
+                ui8Magic[ui8Index] = (uint8_t) i32RxChar;
+                ui8Index = (ui8Index + 1) % 4;
+                if (ui8MagicCount >= 3) {
+                    if (ui8Magic[ui8Index % 4] == 0xFF && ui8Magic[(ui8Index+1) % 4] == 0xFF && ui8Magic[(ui8Index+2) % 4] == 0xFF && (ui8Magic[(ui8Index+3) % 4] == 'T' || ui8Magic[(ui8Index+3) % 4] == 'C' || ui8Magic[(ui8Index+3) % 4] == '0')) {
+                        g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index+3) % 4];
+                        ui8Index = 4;
+                        bValidData = true;
+                        ui8MagicCount = 0;
+                    }
+                } else {
+                    ui8MagicCount++;
+                }
+            }
+        }
+    }
 }
 
 //*****************************************************************************
@@ -1148,24 +1192,24 @@ void Menu(char charReceived)
     }
     case 'M': // Print Menu.
     {
-        UARTprintf("Menu:\n\rM - Print this menu.\n\r");
-        UARTprintf("P - Print raw GPS data.\n\r");
-        UARTprintf("B - Print raw accel, gyro and mag data.\n\r");
-        UARTprintf("A - Trigger solar panel ADC.\n\r");
-        UARTprintf("1 - Trigger ultra sonic sensor #1.\n\r");
-        UARTprintf("2 - Trigger ultra sonic sensor #2.\n\r");
-        UARTprintf("Y - Activate solenoid enable pins.\n\r");
-        UARTprintf("W - Increase throttle.\n\r");
-        UARTprintf("S - Decrease throttle.\n\r");
-        UARTprintf("X - Stop the motors.\n\r");
-        UARTprintf("Q - Quit this program.\n\r");
+        UARTprintf("Menu:\r\nM - Print this menu.\r\n");
+        UARTprintf("P - Print raw GPS data.\r\n");
+        UARTprintf("B - Print raw accel, gyro and mag data.\r\n");
+        UARTprintf("A - Trigger solar panel ADC.\r\n");
+        UARTprintf("1 - Trigger ultra sonic sensor #1.\r\n");
+        UARTprintf("2 - Trigger ultra sonic sensor #2.\r\n");
+        UARTprintf("Y - Activate solenoid enable pins.\r\n");
+        UARTprintf("W - Increase throttle.\r\n");
+        UARTprintf("S - Decrease throttle.\r\n");
+        UARTprintf("X - Stop the motors.\r\n");
+        UARTprintf("Q - Quit this program.\r\n");
         break;
     }
     case 'A': // Trigger solar panel ADC.
     {
         if (ADCBusy(SP_ADC))
         {
-            UARTprintf("ADC Busy!\n\r");
+            UARTprintf("ADC Busy!\r\n");
         }
         else
         {
@@ -1189,7 +1233,7 @@ void Menu(char charReceived)
 
         //
         // Console Feedback.
-        UARTprintf("Trigger Sent!\n\r");
+        UARTprintf("Trigger Sent!\r\n");
 
         //
         // Indicate which sensor is being operated.
@@ -1213,7 +1257,7 @@ void Menu(char charReceived)
 
         //
         // Console Feedback.
-        UARTprintf("Trigger Sent!\n\r");
+        UARTprintf("Trigger Sent!\r\n");
 
         //
         // Indicate which sensor is being operated.
@@ -1233,7 +1277,7 @@ void Menu(char charReceived)
         PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtr1Throttle);
         PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtr1Throttle);
         PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtr1Throttle);
-        UARTprintf("Throttle Increase: %d\n\r", g_mtr1Throttle);
+        UARTprintf("Throttle Increase: %d\r\n", g_mtr1Throttle);
         break;
     }
     case 'S': // Decrease throttle of air motors.
@@ -1245,7 +1289,7 @@ void Menu(char charReceived)
         PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtr1Throttle);
         PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtr1Throttle);
         PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtr1Throttle);
-        UARTprintf("Throttle Decrease: %d\n\r", g_mtr1Throttle);
+        UARTprintf("Throttle Decrease: %d\r\n", g_mtr1Throttle);
         break;
     }
     case 'X': // kill the throttle.
@@ -1489,12 +1533,38 @@ void ProcessGPS(void)
 //*****************************************************************************
 void ProcessRadio(void)
 {
-    //
-    // Get the character received and send it to the console.
-    char charReceived = UARTCharGetNonBlocking(RADIO_UART);
-    UARTCharPutNonBlocking(CONSOLE_UART, charReceived);
+    switch (g_sRxPack.ui8Data[3]) {
+        case 'T':
+        {
+            //
+            // Target type command. Process data.
+            UARTprintf("GS is targeting.\r\n");
 
-    Menu(charReceived);
+            //
+            // Print target lat and long
+            UARTprintf("Lat: %d, Long: %d\r\n",
+                       (int) g_sRxPack.sTargetPacket.tLat,
+                       (int) g_sRxPack.sTargetPacket.tLong);
+
+            break;
+        }
+        case 'C':
+        {
+            //
+            // Control type command. Process data.
+            UARTprintf("GS is controlling.\r\n");
+        }
+        case '0':
+        {
+            //
+            // No good data is being sent.
+            UARTprintf("GS is sending bad data.\r\n");
+        }
+    }
+
+    //
+    // Reset the connection lost timer.
+    // TODO: Set up a connection lost timeout timer.
 
     //
     // Reset the flag.
@@ -1516,11 +1586,11 @@ void ProcessADC(void)
 
     //
     // Print out the data to the console.
-    UARTprintf("SP1 = %d\n\r", ADCData[0]);
-    UARTprintf("SP2 = %d\n\r", ADCData[1]);
-    UARTprintf("SP3 = %d\n\r", ADCData[2]);
-    UARTprintf("SP4 = %d\n\r", ADCData[3]);
-    UARTprintf("SP5 = %d\n\r", ADCData[4]);
+    UARTprintf("SP1 = %d\r\n", ADCData[0]);
+    UARTprintf("SP2 = %d\r\n", ADCData[1]);
+    UARTprintf("SP3 = %d\r\n", ADCData[2]);
+    UARTprintf("SP4 = %d\r\n", ADCData[3]);
+    UARTprintf("SP5 = %d\r\n", ADCData[4]);
 
     //
     // Reset the flag.
@@ -1556,7 +1626,7 @@ int ProcessUltraSonic(uint32_t SysClockSpeed)
     // Reset the flag.
     g_UltraSonicFlag = false;
 
-    UARTprintf("deltaT = %d\n\r", deltaT);
+    UARTprintf("deltaT = %d\r\n", deltaT);
 
     return distance;
 }
@@ -1581,7 +1651,7 @@ void ActivateSolenoids(void)
     // Enable timer 4, so that the pins will be turned off shortly.
     TimerEnable(SOLENOID_TIMER, TIMER_A);
 
-    UARTprintf("Deploying payload...\n\r");
+    UARTprintf("Deploying payload...\r\n");
 }
 
 //*****************************************************************************
@@ -1601,7 +1671,7 @@ void DeactivateSolenoids(void)
     // Turn off USER LED 2.
     TurnOffLED(2);
 
-    UARTprintf("Payload Deployed!\n\r");
+    UARTprintf("Payload Deployed!\r\n");
 }
 
 //*****************************************************************************
@@ -1621,6 +1691,7 @@ void SendPacket(void)
     //g_Pack.pack.lon = 23.234;
 
     g_Pack.pack.velX = 10;
+    g_Pack.pack.velX = 0x000000ff;
     g_Pack.pack.velY = 20;
     g_Pack.pack.velZ = 30;
     g_Pack.pack.posX = 40;
@@ -1713,10 +1784,10 @@ void ProcessIMUData(void)
         // Loop counter print once per second.
         if (g_loopCount && g_PrintRawBMIData)
         {
-            UARTprintf("Accelx = %d\n\rAccely = %d\n\r", accelIntData[0], accelIntData[1]);
-            UARTprintf("Accelz = %d\n\r", accelIntData[2]);
-            UARTprintf("Gyrox = %d\n\rGyroy = %d\n\r", g_gyroDataRaw[0], g_gyroDataRaw[1]);
-            UARTprintf("Gyroz = %d\n\r", g_gyroDataRaw[2]);
+            UARTprintf("Accelx = %d\r\nAccely = %d\r\n", accelIntData[0], accelIntData[1]);
+            UARTprintf("Accelz = %d\r\n", accelIntData[2]);
+            UARTprintf("Gyrox = %d\r\nGyroy = %d\r\n", g_gyroDataRaw[0], g_gyroDataRaw[1]);
+            UARTprintf("Gyroz = %d\r\n", g_gyroDataRaw[2]);
 
             //
             // Reset loop count.
@@ -1768,8 +1839,8 @@ void ProcessMagData(void)
        // Loop counter, print once per second.
        if (g_loopCount && g_PrintRawBMIData)
        {
-           UARTprintf("MagX = %d\n\rMagY = %d\n\r", g_magDataRaw[0], g_magDataRaw[1]);
-           UARTprintf("MagZ = %d\n\r", g_magDataRaw[2]);
+           UARTprintf("MagX = %d\r\nMagY = %d\r\n", g_magDataRaw[0], g_magDataRaw[1]);
+           UARTprintf("MagZ = %d\r\n", g_magDataRaw[2]);
 
            //
            // Reset loop count.

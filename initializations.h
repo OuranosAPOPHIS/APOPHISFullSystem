@@ -45,7 +45,7 @@ void InitSolenoidEnablePins(uint32_t SysClockSpeed);
  * BoostXL-Sensors Initializations
  */
 void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation);
-void InitAltimeter(uint32_t SysClockSpeed);
+void InitAltimeter(uint32_t SysClockSpeed, int8_t *offsetValues);
 
 /*
  * PWM air motor initializations.
