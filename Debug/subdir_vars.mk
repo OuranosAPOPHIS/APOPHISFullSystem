@@ -15,6 +15,7 @@ C_SRCS += \
 ../i2c_driver.c \
 ../initializations.c \
 ../main.c \
+../mma8452q.c \
 ../tm4c1294ncpdt_startup_ccs.c \
 ../uartstdio.c 
 
@@ -25,6 +26,7 @@ C_DEPS += \
 ./i2c_driver.d \
 ./initializations.d \
 ./main.d \
+./mma8452q.d \
 ./tm4c1294ncpdt_startup_ccs.d \
 ./uartstdio.d 
 
@@ -35,6 +37,7 @@ OBJS += \
 ./i2c_driver.obj \
 ./initializations.obj \
 ./main.obj \
+./mma8452q.obj \
 ./tm4c1294ncpdt_startup_ccs.obj \
 ./uartstdio.obj 
 
@@ -45,6 +48,7 @@ OBJS__QUOTED += \
 "i2c_driver.obj" \
 "initializations.obj" \
 "main.obj" \
+"mma8452q.obj" \
 "tm4c1294ncpdt_startup_ccs.obj" \
 "uartstdio.obj" 
 
@@ -55,6 +59,7 @@ C_DEPS__QUOTED += \
 "i2c_driver.d" \
 "initializations.d" \
 "main.d" \
+"mma8452q.d" \
 "tm4c1294ncpdt_startup_ccs.d" \
 "uartstdio.d" 
 
@@ -65,6 +70,7 @@ C_SRCS__QUOTED += \
 "../i2c_driver.c" \
 "../initializations.c" \
 "../main.c" \
+"../mma8452q.c" \
 "../tm4c1294ncpdt_startup_ccs.c" \
 "../uartstdio.c" 
 

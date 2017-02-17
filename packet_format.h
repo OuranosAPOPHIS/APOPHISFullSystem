@@ -86,7 +86,7 @@ typedef struct  {
     char fdConfirm;     // Confirmation of flying or driving.
     bool payloadRelease;    // Release the payload command.
     bool prConfirm;         // Confirmation to release payload command.
-} tGSCPacket; // Size of gscpacket is 25 bytes.
+} tGSCPacket; // Size of gscpacket is 28 bytes.
 
 //
 // Associated Union for gscpacket

@@ -577,10 +577,10 @@ void ConsoleIntHandler(void)
 void RadioIntHandler(void)
 {
 
-    // TODO: wtf?
+    // TODO: wtf magic!?
 
     static uint8_t ui8Index = 0;
-    static uint8_t ui8Magic[10] = {0};
+    static uint8_t ui8Magic[4] = {0};
     static uint8_t ui8MagicCount;
     static bool bValidData = false;
     int32_t i32RxChar;
@@ -601,7 +601,7 @@ void RadioIntHandler(void)
                 //
                 // Get the chars over the UART.
                 g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
-                if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0') && ui8Index >= sizeof(tGSTPacket)) || (g_sRxPack.ui8Data[3] == 'C' && ui8Index >= sizeof(tGSCPacket))) {
+                if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0') && ui8Index >= sizeof(tGSTPacket) - 1) || (g_sRxPack.ui8Data[3] == 'C' && ui8Index >= sizeof(tGSCPacket) - 1)) {
                     ui8Index = 0;
                     g_RadioFlag = true;
                     bValidData = false;
@@ -1553,12 +1553,16 @@ void ProcessRadio(void)
             //
             // Control type command. Process data.
             UARTprintf("GS is controlling.\r\n");
+
+            break;
         }
         case '0':
         {
             //
             // No good data is being sent.
             UARTprintf("GS is sending bad data.\r\n");
+
+            break;
         }
     }
 
@@ -1691,7 +1695,6 @@ void SendPacket(void)
     //g_Pack.pack.lon = 23.234;
 
     g_Pack.pack.velX = 10;
-    g_Pack.pack.velX = 0x000000ff;
     g_Pack.pack.velY = 20;
     g_Pack.pack.velZ = 30;
     g_Pack.pack.posX = 40;
