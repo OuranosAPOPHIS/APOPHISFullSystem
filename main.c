@@ -52,7 +52,7 @@
 //
 //*****************************************************************************
 #define CONSOLE_ACTIVATED true
-#define RADIO_ACTIVATED true
+#define RADIO_ACTIVATED false
 #define GPS_ACTIVATED false
 #define GNDMTRS_ACTIVATED false
 #define SOLARS_ACTIVATED false
@@ -290,336 +290,341 @@ uint32_t g_mtr1Throttle = ZEROTHROTTLE;
 //*****************************************************************************
 int main(void) {
 
-     bool bBiasCalcBad = true;
+    bool bBiasCalcBad = true;
 
-     //
-     // Enable lazy stacking for interrupt handlers.  This allows floating-point
-     // instructions to be used within interrupt handlers, but at the expense of
-     // extra stack usage.
-     FPUEnable();
-     FPULazyStackingEnable();
+    //
+    // Enable lazy stacking for interrupt handlers.  This allows floating-point
+    // instructions to be used within interrupt handlers, but at the expense of
+    // extra stack usage.
+    FPUEnable();
+    FPULazyStackingEnable();
 
-     //
-     // Set the clocking to run directly from the crystal. (16 MHz)
-     g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
-                        SYSCTL_XTAL_16MHZ, 16000000);
+    //
+    // Set the clocking to run directly from the crystal. (16 MHz)
+    g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
+                                         SYSCTL_XTAL_16MHZ, 16000000);
 
-     //
-     // Disable interrupts during initialization period.
-     IntMasterDisable();
+    //
+    // Disable interrupts during initialization period.
+    IntMasterDisable();
 
-     //
-     // Before doing anything, initialize the LED.
-     InitLED(g_SysClockSpeed);
+    //
+    // Before doing anything, initialize the LED.
+    InitLED(g_SysClockSpeed);
 
-     //
-     // Turn off all LEDs, in case one was left on.
-     TurnOffLED(5);
+    //
+    // Turn off all LEDs, in case one was left on.
+    TurnOffLED(5);
 
-     //
-     // Initialization has begun. Turn on LED 1.
-     TurnOnLED(1);
+    //
+    // Initialization has begun. Turn on LED 1.
+    TurnOnLED(1);
 
-     //
-     // Initialize the buttons.
-     ButtonsInit();
+    //
+    // Initialize the buttons.
+    ButtonsInit();
 
-     //
-     // Initialize the Console if turned on.
-     if (CONSOLE_ACTIVATED)
-         InitConsole();
+    //
+    // Initialize the Console if turned on.
+    InitConsole();
+    UARTprintf("Clock speed: %d\r\n", g_SysClockSpeed);
 
-     UARTprintf("Clock speed: %d\r\n", g_SysClockSpeed);
+    //
+    // Initialize the radio if turned on.
+#if RADIO_ACTIVATED
+    InitRadio(g_SysClockSpeed);
+#endif
 
-     //
-     // Initialize the radio if turned on.
-     if (RADIO_ACTIVATED)
-         InitRadio(g_SysClockSpeed);
+    //
+    // Initialize the GPS if turned on.
+#if GPS_ACTIVATED
+    InitGPS(g_SysClockSpeed);
+#endif
 
-     //
-     // Initialize the GPS if turned on.
-     if (GPS_ACTIVATED)
-         InitGPS(g_SysClockSpeed);
+    //
+    // Initialize the ground motors if turned on.
+#if GNDMTRS_ACTIVATED
+    InitGndMotors(g_SysClockSpeed);
+#endif
 
-     //
-     // Initialize the ground motors if turned on.
-     if (GNDMTRS_ACTIVATED)
-         InitGndMotors(g_SysClockSpeed);
+    //
+    // Initialize the solar panels if turned on.
+#if SOLARS_ACTIVATED
+    InitSolarPanels();
+#endif
 
-     //
-     // Initialize the solar panels if turned on.
-     if (SOLARS_ACTIVATED)
-         InitSolarPanels();
+    //
+    // Initialize the ultrasonic sensors if turned on.
+#if ULTRASONIC_ACTIVATED
+    InitUltraSonicSensor();
+#endif
 
-     //
-     // Initialize the ultrasonic sensors if turned on.
-     if (ULTRASONIC_ACTIVATED)
-         InitUltraSonicSensor();
+    //
+    // Initialize the solenoid enable pins if turned on.
+#if SOLENOIDS_ACTIVATED
+    InitSolenoidEnablePins(g_SysClockSpeed);
+#endif
 
-     //
-     // Initialize the solenoid enable pins if turned on.
-     if (SOLENOIDS_ACTIVATED)
-         InitSolenoidEnablePins(g_SysClockSpeed);
+    //
+    // Initialize the pressure sensor if enabled.
+#if ALTIMETER_ACTIVATED
+    //
+    // Initialize the altimeter.
+    InitAltimeter(g_SysClockSpeed, g_BME280OffsetValues);
 
-     //
-     // Initialize the BMI160 if enabled.
-     if (IMU_ACTIVATED)
-         InitIMU(g_SysClockSpeed, g_offsetData);
+    //
+    // Set the offset values.
+    g_BME280OffsetUnsigned[0] = g_BME280OffsetValues[0];
+    g_BME280OffsetUnsigned[1] = g_BME280OffsetValues[3];
+#endif
 
-     //
-     // Initialize the pressure sensor if enabled.
-     if (ALTIMETER_ACTIVATED)
-     {
-         //
-         // Initialize the altimeter.
-         InitAltimeter(g_SysClockSpeed, g_BME280OffsetValues);
+    //
+    // Initialize the air motors if activated.
+#if AIRMTRS_ACTIVATED
+    InitAirMtrs(g_SysClockSpeed);
+#endif
 
-         //
-         // Set the offset values.
-         g_BME280OffsetUnsigned[0] = g_BME280OffsetValues[0];
-         g_BME280OffsetUnsigned[1] = g_BME280OffsetValues[3];
-     }
+    //
+    // Initialize the BMI160 if enabled.
+#if IMU_ACTIVATED
 
-     //
-     // Initialize the air motors if activated.
-     if (AIRMTRS_ACTIVATED)
-         InitAirMtrs(g_SysClockSpeed);
+    InitIMU(g_SysClockSpeed, g_offsetData);
 
-     //
-     // Get the initial reading of the gyro and accel to calculate a bias.
-     while(bBiasCalcBad)
-     {
-         int numCalcs = 0;
-         int index, j;
-         uint32_t ui32Sum[6] = {0};
-         uint16_t bias[6][50] = {0};
-         IntMasterEnable();
-         while(numCalcs < 50)
-         {
-             if (g_IMUDataFlag)
-             {
-                 uint8_t status;
-                 uint8_t IMUData[12] = {0};
+    //
+    // Get the initial reading of the gyro and accel to calculate a bias.
+    while(bBiasCalcBad)
+    {
+        int numCalcs = 0;
+        int index, j;
+        uint32_t ui32Sum[6] = {0};
+        uint16_t bias[6][50] = {0};
+        IntMasterEnable();
+        while(numCalcs < 50)
+        {
+            if (g_IMUDataFlag)
+            {
+                uint8_t status;
+                uint8_t IMUData[12] = {0};
 
-                 //
-                 // First check the status for which data is ready.
-                 I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
+                //
+                // First check the status for which data is ready.
+                I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
 
-                 //
-                 // Check what status returned.
-                 if ((status & 0xC0) == (BMI160_ACC_RDY | BMI160_GYR_RDY))
-                 {
-                     //
-                     // Then get the data for both the accel and gyro.
-                     I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 12, IMUData);
+                //
+                // Check what status returned.
+                if ((status & 0xC0) == (BMI160_ACC_RDY | BMI160_GYR_RDY))
+                {
+                    //
+                    // Then get the data for both the accel and gyro.
+                    I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 12, IMUData);
 
-                     //
-                     // Capture the gyro data.
-                     bias[3][numCalcs] = ((IMUData[1] << 8) + IMUData[0]);
-                     bias[4][numCalcs] = ((IMUData[3] << 8) + IMUData[2]);
-                     bias[5][numCalcs] = ((IMUData[5] << 8) + IMUData[4]);
+                    //
+                    // Capture the gyro data.
+                    bias[3][numCalcs] = ((IMUData[1] << 8) + IMUData[0]);
+                    bias[4][numCalcs] = ((IMUData[3] << 8) + IMUData[2]);
+                    bias[5][numCalcs] = ((IMUData[5] << 8) + IMUData[4]);
 
-                     //
-                     // Capture the accel data.
-                     bias[0][numCalcs] = ((IMUData[7] << 8) + IMUData[6]);
-                     bias[1][numCalcs] = ((IMUData[9] << 8) + IMUData[8]);
-                     bias[2][numCalcs] = ((IMUData[11] << 8) + IMUData[10]);
+                    //
+                    // Capture the accel data.
+                    bias[0][numCalcs] = ((IMUData[7] << 8) + IMUData[6]);
+                    bias[1][numCalcs] = ((IMUData[9] << 8) + IMUData[8]);
+                    bias[2][numCalcs] = ((IMUData[11] << 8) + IMUData[10]);
 
-                     numCalcs++;
-                 }
-             }
-         }
+                    numCalcs++;
+                }
+            }
+        }
 
-         IntMasterDisable();
+        IntMasterDisable();
 
-         //
-         // Calculate the bias.
-         for (index = 0; index < numCalcs; index++)
-         {
-             for (j = 0; j < 6; j++)
-             {
-                 ui32Sum[j] += bias[j][index];
-             }
-         }
+        //
+        // Calculate the bias.
+        for (index = 0; index < numCalcs; index++)
+        {
+            for (j = 0; j < 6; j++)
+            {
+                ui32Sum[j] += bias[j][index];
+            }
+        }
 
-         //
-         // Actual bias.
-         for (index = 0; index < 6; index++)
-         {
-             g_Bias[index] = ui32Sum[index] / numCalcs;
-         }
+        //
+        // Actual bias.
+        for (index = 0; index < 6; index++)
+        {
+            g_Bias[index] = ui32Sum[index] / numCalcs;
+        }
 
-         //
-         // Check if the accel results are good data.
-         if ((g_Bias[0] < ONEG/20) || (g_Bias[0] > (65536 - ONEG/20)))
-         {
-             //
-             // Good data, x-axis is flat. Now check y-axis.
-             if ((g_Bias[1] < ONEG/20) || (g_Bias[1] > (65536 - ONEG/20)))
-             {
-                 //
-                 // Good data, y-axis is flat. Now check z-axis.
-                 if ((g_Bias[2] > (ONEG - ONEG/20)) || (g_Bias[2] < (ONEG + ONEG/20)))
-                 {
-                     //
-                     // Remove the 1G portion of the bias for the z-axis.
-                     g_Bias[2] -= ONEG;
+        //
+        // Check if the accel results are good data.
+        if ((g_Bias[0] < ONEG/20) || (g_Bias[0] > (65536 - ONEG/20)))
+        {
+            //
+            // Good data, x-axis is flat. Now check y-axis.
+            if ((g_Bias[1] < ONEG/20) || (g_Bias[1] > (65536 - ONEG/20)))
+            {
+                //
+                // Good data, y-axis is flat. Now check z-axis.
+                if ((g_Bias[2] > (ONEG - ONEG/20)) || (g_Bias[2] < (ONEG + ONEG/20)))
+                {
+                    //
+                    // Remove the 1G portion of the bias for the z-axis.
+                    g_Bias[2] -= ONEG;
 
-                     //
-                     // All good data.
-                     bBiasCalcBad = false;
+                    //
+                    // All good data.
+                    bBiasCalcBad = false;
 
-                     UARTprintf("Accelerometer calibration successful!\r\n");
-                 }
-                 else
-                     UARTprintf("BAD CALIBRATION! Z-axis is not pointing up!!\r\n");
-             }
-             else
-                 UARTprintf("BAD CALIBRATION X and Y axes are not flat!!\r\n");
-         }
-         else
-             UARTprintf("BAD CALIBRATION X and Y axes are not flat!!\r\n");
-     }
+                    UARTprintf("Accelerometer calibration successful!\r\n");
+                }
+                else
+                    UARTprintf("BAD CALIBRATION! Z-axis is not pointing up!!\r\n");
+            }
+            else
+                UARTprintf("BAD CALIBRATION X and Y axes are not flat!!\r\n");
+        }
+        else
+            UARTprintf("BAD CALIBRATION X and Y axes are not flat!!\r\n");
+    }
+#endif
 
-     //
-     // Initialize the state of the system.
-     sStatus.bFlyOrDrive = false;
-     sStatus.bMode = false;
-     sStatus.bPayDeployed = false;
-     sStatus.bGoodRadioData = false;
+    //
+    // Initialize the state of the system.
+    sStatus.bFlyOrDrive = false;
+    sStatus.bMode = false;
+    sStatus.bPayDeployed = false;
+    sStatus.bGoodRadioData = false;
 
-     //
-     // Before starting program, wait for a button press on either switch.
-     UARTprintf("Initialization Complete!\r\nPress left button to start.");
+    //
+    // Before starting program, wait for a button press on either switch.
+    UARTprintf("Initialization Complete!\r\nPress left button to start.");
 
-     WaitForButtonPress(LEFT_BUTTON);
+    WaitForButtonPress(LEFT_BUTTON);
 
-     //
-     // Initialization complete. Enable interrupts.
-     IntMasterEnable();
+    //
+    // Initialization complete. Enable interrupts.
+    IntMasterEnable();
 
-     //
-     // Turn off LED1, and enable the systick at 2 Hz to
-     // blink LED 4, signifying regular operation.
-     TurnOffLED(1);
-     SysTickPeriodSet(g_SysClockSpeed / 2);
-     SysTickEnable();
+    //
+    // Turn off LED1, and enable the systick at 2 Hz to
+    // blink LED 4, signifying regular operation.
+    TurnOffLED(1);
+    SysTickPeriodSet(g_SysClockSpeed / 2);
+    SysTickEnable();
 
-     if (AIRMTRS_ACTIVATED)
-     {
-         //
-         // Activate the motors.
-         PWMGenEnable(PWM0_BASE, PWM_GEN_0);
-         PWMGenEnable(PWM0_BASE, PWM_GEN_1);
-         PWMGenEnable(PWM0_BASE, PWM_GEN_2);
-     }
+#if AIRMTRS_ACTIVATED
+    //
+    // Activate the motors.
+    PWMGenEnable(PWM0_BASE, PWM_GEN_0);
+    PWMGenEnable(PWM0_BASE, PWM_GEN_1);
+    PWMGenEnable(PWM0_BASE, PWM_GEN_2);
+#endif
 
-     //
-     // Print menu.
-     Menu('M');
+    //
+    // Print menu.
+    Menu('M');
 
-     //
-     // Program start.
-     while(!g_Quit)
-     {
-         //
-         // First check for commands from Console.
-         if (g_ConsoleFlag)
-             Menu(g_CharConsole);
+    //
+    // Program start.
+    while(!g_Quit)
+    {
+        //
+        // First check for commands from Console.
+        if (g_ConsoleFlag)
+            Menu(g_CharConsole);
 
-         //
-         // Now check if GPS data is ready.
-         if (g_GPSFlag)
-             ProcessGPS();
+        //
+        // Now check if GPS data is ready.
+        if (g_GPSFlag)
+            ProcessGPS();
 
-         //
-         // Check if data from the radio is ready.
-         if (g_RadioFlag)
-             ProcessRadio();
+        //
+        // Check if data from the radio is ready.
+        if (g_RadioFlag)
+            ProcessRadio();
 
-         //
-         // Check if ADC is finished.
-         if (g_ADCFlag)
-             ProcessADC();
+        //
+        // Check if ADC is finished.
+        if (g_ADCFlag)
+            ProcessADC();
 
-         //
-         // Check if Ultrasonic is done.
-         if (g_UltraSonicFlag)
-             ProcessUltraSonic(g_SysClockSpeed);
+        //
+        // Check if Ultrasonic is done.
+        if (g_UltraSonicFlag)
+            ProcessUltraSonic(g_SysClockSpeed);
 
-         //
-         // Check if accel or gyro data is ready.
-         if (g_IMUDataFlag)
-             ProcessIMUData();
+        //
+        // Check if accel or gyro data is ready.
+        if (g_IMUDataFlag)
+            ProcessIMUData();
 
-         //
-         // Check if mag data is ready.
-         if (g_MagDataFlag)
-             ProcessMagData();
+        //
+        // Check if mag data is ready.
+        if (g_MagDataFlag)
+            ProcessMagData();
 
-         //
-         // Check if pressure or temperature data is ready.
-         if (g_BME280Ready)
-         {
-             int32_t tempInt;
-             uint32_t presInt;
-             int32_t rawPress, rawTemp;
-             uint8_t rxBuffer[16];
-             uint8_t *ptrBuffer = &rxBuffer[0];
+        //
+        // Check if pressure or temperature data is ready.
+        if (g_BME280Ready)
+        {
+            int32_t tempInt;
+            uint32_t presInt;
+            int32_t rawPress, rawTemp;
+            uint8_t rxBuffer[16];
+            uint8_t *ptrBuffer = &rxBuffer[0];
 
-             //
-             // Get the raw data.
-             GetBME280RawData(BOOST_I2C, ptrBuffer);
+            //
+            // Get the raw data.
+            GetBME280RawData(BOOST_I2C, ptrBuffer);
 
-             rawPress = (rxBuffer[0] << 12) | (rxBuffer[1] << 4) | (rxBuffer[2] >> 4);
-             rawTemp = (rxBuffer[3] << 12) | (rxBuffer[4] << 4) | (rxBuffer[5] >> 4);
-             //rawHumid = (rxBuffer[6] << 8) | (rxBuffer[7]);
+            rawPress = (rxBuffer[0] << 12) | (rxBuffer[1] << 4) | (rxBuffer[2] >> 4);
+            rawTemp = (rxBuffer[3] << 12) | (rxBuffer[4] << 4) | (rxBuffer[5] >> 4);
+            //rawHumid = (rxBuffer[6] << 8) | (rxBuffer[7]);
 
-             //tempInt = *g_ptrBME280RawData << 20;
+            //tempInt = *g_ptrBME280RawData << 20;
 
-             //
-             // Correct the temp data.
-             tempInt = BME280_compensate_T_int32(rawTemp, g_p_t_fine,
-                                                 g_BME280OffsetValues,
-                                                 g_BME280OffsetUnsigned);
+            //
+            // Correct the temp data.
+            tempInt = BME280_compensate_T_int32(rawTemp, g_p_t_fine,
+                                                g_BME280OffsetValues,
+                                                g_BME280OffsetUnsigned);
 
-             //
-             // Calculate temp in degrees C, float format.
-             g_Temp = tempInt / 100.0f;
+            //
+            // Calculate temp in degrees C, float format.
+            g_Temp = tempInt / 100.0f;
 
-             //
-             // Correct the pressure data.
-             presInt = BME280_compensate_P_int64(rawPress, g_p_t_fine,
-                                                 g_BME280OffsetValues,
-                                                 g_BME280OffsetUnsigned + 1);
+            //
+            // Correct the pressure data.
+            presInt = BME280_compensate_P_int64(rawPress, g_p_t_fine,
+                                                g_BME280OffsetValues,
+                                                g_BME280OffsetUnsigned + 1);
 
-             //
-             // Calculate pressure in float form (Pascals).
-             g_Pressure = presInt / 256.0f;
-         }
+            //
+            // Calculate pressure in float form (Pascals).
+            g_Pressure = presInt / 256.0f;
+        }
 
-         //
-         // Check if it is time to send a packet to the ground station.
-         if (g_SendPacket)
-            SendPacket();
+        //
+        // Check if it is time to send a packet to the ground station.
+       // if (g_SendPacket)
+            //SendPacket();
 
-         //
-         // Update the trajectory.
-         UpdateTrajectory();
-     }
+        //
+        // Update the trajectory.
+        //UpdateTrajectory();
+    }
 
-     //
-     // Program ending. Do any clean up that's needed.
+    //
+    // Program ending. Do any clean up that's needed.
 
-     UARTprintf("Goodbye!\r\n");
+    UARTprintf("Goodbye!\r\n");
 
-     I2CMasterDisable(BOOST_I2C);
+    I2CMasterDisable(BOOST_I2C);
 
-     TurnOffLED(5);
+    TurnOffLED(5);
 
-     IntMasterDisable();
+    IntMasterDisable();
 
-     return 0;
+    return 0;
 }
 
 /*
@@ -1066,20 +1071,20 @@ void Timer1BInterrupt(void)
 //*****************************************************************************
 void SolenoidInterrupt(void)
 {
-     uint32_t timerStatus;
+    uint32_t timerStatus;
 
-     //
-     // Get the timer interrupt status and clear the interrupt.
-     timerStatus = TimerIntStatus(SOLENOID_TIMER, true);
-     TimerIntClear(SOLENOID_TIMER, timerStatus);
+    //
+    // Get the timer interrupt status and clear the interrupt.
+    timerStatus = TimerIntStatus(SOLENOID_TIMER, true);
+    TimerIntClear(SOLENOID_TIMER, timerStatus);
 
-     //
-     // Deactivate the solenoid enable pins.
-     DeactivateSolenoids();
+    //
+    // Deactivate the solenoid enable pins.
+    DeactivateSolenoids();
 
-     //
-     // Disable the timer.
-     TimerDisable(SOLENOID_TIMER, TIMER_A);
+    //
+    // Disable the timer.
+    TimerDisable(SOLENOID_TIMER, TIMER_A);
 }
 
 //*****************************************************************************
@@ -1175,11 +1180,11 @@ void TurnOnLED(uint32_t LEDNum)
         return;
     }
     default: // Turn on all LEDs.
-        {
-            GPIOPinWrite(LED_PORT1, LED1_PIN | LED2_PIN, LED1_PIN | LED2_PIN);
-            GPIOPinWrite(LED_PORT2, LED3_PIN | LED4_PIN, LED3_PIN | LED4_PIN);
-            return;
-        }
+    {
+        GPIOPinWrite(LED_PORT1, LED1_PIN | LED2_PIN, LED1_PIN | LED2_PIN);
+        GPIOPinWrite(LED_PORT2, LED3_PIN | LED4_PIN, LED3_PIN | LED4_PIN);
+        return;
+    }
     }
 }
 
@@ -1191,37 +1196,37 @@ void TurnOnLED(uint32_t LEDNum)
 //*****************************************************************************
 void TurnOffLED(uint32_t LEDNum)
 {
-     //
-     // Turn on the associated LED number.
-     switch(LEDNum)
-     {
-     case 1: // Turn on User LED 1
-     {
-         GPIOPinWrite(LED_PORT1, LED1_PIN, 0x00);
-         return;
-     }
-     case 2: // Turn on User LED 2
-     {
-         GPIOPinWrite(LED_PORT1, LED2_PIN, 0x00);
-         return;
-     }
-     case 3: // Turn on User LED 3
-     {
-         GPIOPinWrite(LED_PORT2, LED3_PIN, 0x00);
-         return;
-     }
-     case 4: // Turn on User LED 4
-     {
-         GPIOPinWrite(LED_PORT2, LED4_PIN, 0x00);
-         return;
-     }
-     default: // Turn off all LEDs.
-     {
-         GPIOPinWrite(LED_PORT1, LED1_PIN | LED2_PIN, 0x00);
-         GPIOPinWrite(LED_PORT2, LED3_PIN | LED4_PIN, 0x00);
-         return;
-     }
-     }
+    //
+    // Turn on the associated LED number.
+    switch(LEDNum)
+    {
+    case 1: // Turn on User LED 1
+    {
+        GPIOPinWrite(LED_PORT1, LED1_PIN, 0x00);
+        return;
+    }
+    case 2: // Turn on User LED 2
+    {
+        GPIOPinWrite(LED_PORT1, LED2_PIN, 0x00);
+        return;
+    }
+    case 3: // Turn on User LED 3
+    {
+        GPIOPinWrite(LED_PORT2, LED3_PIN, 0x00);
+        return;
+    }
+    case 4: // Turn on User LED 4
+    {
+        GPIOPinWrite(LED_PORT2, LED4_PIN, 0x00);
+        return;
+    }
+    default: // Turn off all LEDs.
+    {
+        GPIOPinWrite(LED_PORT1, LED1_PIN | LED2_PIN, 0x00);
+        GPIOPinWrite(LED_PORT2, LED3_PIN | LED4_PIN, 0x00);
+        return;
+    }
+    }
 }
 
 //*****************************************************************************
@@ -1648,38 +1653,38 @@ void ProcessGPS(void)
 void ProcessRadio(void)
 {
     switch (g_sRxPack.ui8Data[3]) {
-        case 'T':
-        {
-            //
-            // Change the status of the platform.
-            sStatus.bMode = true;
+    case 'T':
+    {
+        //
+        // Change the status of the platform.
+        sStatus.bMode = true;
 
-            //
-            // Make sure main() knows the data is good.
-            sStatus.bGoodRadioData = true;
+        //
+        // Make sure main() knows the data is good.
+        sStatus.bGoodRadioData = true;
 
-            break;
-        }
-        case 'C':
-        {
-            //
-            // Change the status of the platform.
-            sStatus.bMode = false;
+        break;
+    }
+    case 'C':
+    {
+        //
+        // Change the status of the platform.
+        sStatus.bMode = false;
 
-            break;
-        }
-        case '0':
-        {
-            //
-            // Change the status of the platform.
-            sStatus.bMode = true;
+        break;
+    }
+    case '0':
+    {
+        //
+        // Change the status of the platform.
+        sStatus.bMode = true;
 
-            //
-            // Receiving bad data. Tell main to ignore it.
-            sStatus.bGoodRadioData = true;
+        //
+        // Receiving bad data. Tell main to ignore it.
+        sStatus.bGoodRadioData = true;
 
-            break;
-        }
+        break;
+    }
     }
 
     //
@@ -1950,35 +1955,35 @@ void ProcessMagData(void)
     // First check the status for which data is ready.
     I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
 
-   if((status && 0x20) == BMI160_MAG_RDY)
-   {
-       //
-       // Magnetometer data is ready. So get it.
-       I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_MAG_X, 4, IMUData);
+    if((status && 0x20) == BMI160_MAG_RDY)
+    {
+        //
+        // Magnetometer data is ready. So get it.
+        I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_MAG_X, 4, IMUData);
 
-       //
-       // Assign it to global variables.
-       g_magDataRaw[0] = (IMUData[1] << 8) + IMUData[0];
-       g_magDataRaw[1] = (IMUData[3] << 8) + IMUData[2];
-       g_magDataRaw[2] = (IMUData[5] << 8) + IMUData[4];
-       g_magDataRaw[3] = (IMUData[7] << 8) + IMUData[6];
+        //
+        // Assign it to global variables.
+        g_magDataRaw[0] = (IMUData[1] << 8) + IMUData[0];
+        g_magDataRaw[1] = (IMUData[3] << 8) + IMUData[2];
+        g_magDataRaw[2] = (IMUData[5] << 8) + IMUData[4];
+        g_magDataRaw[3] = (IMUData[7] << 8) + IMUData[6];
 
-       //
-       // Loop counter, print once per second.
-       if (g_loopCount && g_PrintRawBMIData)
-       {
-           UARTprintf("MagX = %d\r\nMagY = %d\r\n", g_magDataRaw[0], g_magDataRaw[1]);
-           UARTprintf("MagZ = %d\r\n", g_magDataRaw[2]);
+        //
+        // Loop counter, print once per second.
+        if (g_loopCount && g_PrintRawBMIData)
+        {
+            UARTprintf("MagX = %d\r\nMagY = %d\r\n", g_magDataRaw[0], g_magDataRaw[1]);
+            UARTprintf("MagZ = %d\r\n", g_magDataRaw[2]);
 
-           //
-           // Reset loop count.
-           g_loopCount = false;
-       }
-   }
+            //
+            // Reset loop count.
+            g_loopCount = false;
+        }
+    }
 
-   //
-   // Reset flag.
-   g_MagDataFlag = false;
+    //
+    // Reset flag.
+    g_MagDataFlag = false;
 }
 
 //*****************************************************************************
