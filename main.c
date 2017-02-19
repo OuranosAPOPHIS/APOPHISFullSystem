@@ -60,7 +60,9 @@
 #define SOLENOIDS_ACTIVATED false
 #define IMU_ACTIVATED true
 #define ALTIMETER_ACTIVATED false
-#define AIRMTRS_ACTIVATED false
+#define AIRMTRS_ACTIVATED true
+
+#define ONEG 16384
 
 //*****************************************************************************
 //
@@ -95,12 +97,26 @@ void SendPacket(void);
 void ProcessIMUData(void);
 void ProcessMagData(void);
 void WaitForButtonPress(uint8_t ButtonState);
+void UpdateTrajectory(void);
 
 //*****************************************************************************
 //
 // Global Variables
 //
 //*****************************************************************************
+
+//
+// State of the system structure definition and variable.
+typedef struct {
+    bool bFlyOrDrive;   // Drive is false, fly is true.
+    bool bMode;         // Autonomous is true, manual is false.
+    bool bPayDeployed;  // Whether the payload has been deployed.
+    bool bGoodRadioData;    // Determines whether the radio data is good or not.
+} SystemStatus;
+
+//
+// Initialize the state of the system.
+SystemStatus sStatus;
 
 //
 // Global Instance structure to manage the DCM state.
@@ -162,18 +178,6 @@ bool g_GPSLEDOn = false;
 bool g_GPSConnected = false;
 
 //
-// Variable to store UTC.
-uint32_t g_Time;
-
-//
-// Variable to store latitude.
-float g_Latitude;
-
-//
-// Variable to store longitude.
-float g_Longitude;
-
-//
 // Variable to determine whether to print the raw GPS data to the terminal.
 bool g_PrintRawGPS = false;
 
@@ -213,6 +217,7 @@ float g_accelLSBg = 16384;
 //
 // Offset compensation data for the accel and gyro.
 uint8_t g_offsetData[7] = {0};
+uint16_t g_Bias[6] = {0};
 
 //
 // Used as global storage for the gyro data.
@@ -284,6 +289,8 @@ uint32_t g_mtr1Throttle = ZEROTHROTTLE;
 //
 //*****************************************************************************
 int main(void) {
+
+     bool bBiasCalcBad = true;
 
      //
      // Enable lazy stacking for interrupt handlers.  This allows floating-point
@@ -379,6 +386,109 @@ int main(void) {
          InitAirMtrs(g_SysClockSpeed);
 
      //
+     // Get the initial reading of the gyro and accel to calculate a bias.
+     while(bBiasCalcBad)
+     {
+         int numCalcs = 0;
+         int index, j;
+         uint32_t ui32Sum[6] = {0};
+         uint16_t bias[6][50] = {0};
+         IntMasterEnable();
+         while(numCalcs < 50)
+         {
+             if (g_IMUDataFlag)
+             {
+                 uint8_t status;
+                 uint8_t IMUData[12] = {0};
+
+                 //
+                 // First check the status for which data is ready.
+                 I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
+
+                 //
+                 // Check what status returned.
+                 if ((status & 0xC0) == (BMI160_ACC_RDY | BMI160_GYR_RDY))
+                 {
+                     //
+                     // Then get the data for both the accel and gyro.
+                     I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 12, IMUData);
+
+                     //
+                     // Capture the gyro data.
+                     bias[3][numCalcs] = ((IMUData[1] << 8) + IMUData[0]);
+                     bias[4][numCalcs] = ((IMUData[3] << 8) + IMUData[2]);
+                     bias[5][numCalcs] = ((IMUData[5] << 8) + IMUData[4]);
+
+                     //
+                     // Capture the accel data.
+                     bias[0][numCalcs] = ((IMUData[7] << 8) + IMUData[6]);
+                     bias[1][numCalcs] = ((IMUData[9] << 8) + IMUData[8]);
+                     bias[2][numCalcs] = ((IMUData[11] << 8) + IMUData[10]);
+
+                     numCalcs++;
+                 }
+             }
+         }
+
+         IntMasterDisable();
+
+         //
+         // Calculate the bias.
+         for (index = 0; index < numCalcs; index++)
+         {
+             for (j = 0; j < 6; j++)
+             {
+                 ui32Sum[j] += bias[j][index];
+             }
+         }
+
+         //
+         // Actual bias.
+         for (index = 0; index < 6; index++)
+         {
+             g_Bias[index] = ui32Sum[index] / numCalcs;
+         }
+
+         //
+         // Check if the accel results are good data.
+         if ((g_Bias[0] < ONEG/20) || (g_Bias[0] > (65536 - ONEG/20)))
+         {
+             //
+             // Good data, x-axis is flat. Now check y-axis.
+             if ((g_Bias[1] < ONEG/20) || (g_Bias[1] > (65536 - ONEG/20)))
+             {
+                 //
+                 // Good data, y-axis is flat. Now check z-axis.
+                 if ((g_Bias[2] > (ONEG - ONEG/20)) || (g_Bias[2] < (ONEG + ONEG/20)))
+                 {
+                     //
+                     // Remove the 1G portion of the bias for the z-axis.
+                     g_Bias[2] -= ONEG;
+
+                     //
+                     // All good data.
+                     bBiasCalcBad = false;
+
+                     UARTprintf("Accelerometer calibration successful!\r\n");
+                 }
+                 else
+                     UARTprintf("BAD CALIBRATION! Z-axis is not pointing up!!\r\n");
+             }
+             else
+                 UARTprintf("BAD CALIBRATION X and Y axes are not flat!!\r\n");
+         }
+         else
+             UARTprintf("BAD CALIBRATION X and Y axes are not flat!!\r\n");
+     }
+
+     //
+     // Initialize the state of the system.
+     sStatus.bFlyOrDrive = false;
+     sStatus.bMode = false;
+     sStatus.bPayDeployed = false;
+     sStatus.bGoodRadioData = false;
+
+     //
      // Before starting program, wait for a button press on either switch.
      UARTprintf("Initialization Complete!\r\nPress left button to start.");
 
@@ -389,7 +499,7 @@ int main(void) {
      IntMasterEnable();
 
      //
-     // Initialization complete. Turn off LED1, and enable the systick at 2 Hz to
+     // Turn off LED1, and enable the systick at 2 Hz to
      // blink LED 4, signifying regular operation.
      TurnOffLED(1);
      SysTickPeriodSet(g_SysClockSpeed / 2);
@@ -492,6 +602,10 @@ int main(void) {
          // Check if it is time to send a packet to the ground station.
          if (g_SendPacket)
             SendPacket();
+
+         //
+         // Update the trajectory.
+         UpdateTrajectory();
      }
 
      //
@@ -1537,30 +1651,32 @@ void ProcessRadio(void)
         case 'T':
         {
             //
-            // Target type command. Process data.
-            UARTprintf("GS is targeting.\r\n");
+            // Change the status of the platform.
+            sStatus.bMode = true;
 
             //
-            // Print target lat and long
-            UARTprintf("Lat: %d, Long: %d\r\n",
-                       (int) g_sRxPack.sTargetPacket.tLat,
-                       (int) g_sRxPack.sTargetPacket.tLong);
+            // Make sure main() knows the data is good.
+            sStatus.bGoodRadioData = true;
 
             break;
         }
         case 'C':
         {
             //
-            // Control type command. Process data.
-            UARTprintf("GS is controlling.\r\n");
+            // Change the status of the platform.
+            sStatus.bMode = false;
 
             break;
         }
         case '0':
         {
             //
-            // No good data is being sent.
-            UARTprintf("GS is sending bad data.\r\n");
+            // Change the status of the platform.
+            sStatus.bMode = true;
+
+            //
+            // Receiving bad data. Tell main to ignore it.
+            sStatus.bGoodRadioData = true;
 
             break;
         }
@@ -1676,6 +1792,10 @@ void DeactivateSolenoids(void)
     TurnOffLED(2);
 
     UARTprintf("Payload Deployed!\r\n");
+
+    //
+    // Update system status.
+    sStatus.bPayDeployed = true;
 }
 
 //*****************************************************************************
@@ -1767,15 +1887,15 @@ void ProcessIMUData(void)
 
         //
         // Set the gyro data to the global variables.
-        g_gyroDataRaw[0] = (IMUData[1] << 8) + IMUData[0];
-        g_gyroDataRaw[1] = (IMUData[3] << 8) + IMUData[2];
-        g_gyroDataRaw[2] = (IMUData[5] << 8) + IMUData[4];
+        g_gyroDataRaw[0] = ((IMUData[1] << 8) + IMUData[0]) - g_Bias[3];
+        g_gyroDataRaw[1] = ((IMUData[3] << 8) + IMUData[2]) - g_Bias[4];
+        g_gyroDataRaw[2] = ((IMUData[5] << 8) + IMUData[4]) - g_Bias[5];
 
         //
         // Set the accelerometer data.
-        *p_accelX = (IMUData[7] << 8) + IMUData[6];
-        *p_accelY = (IMUData[9] << 8) + IMUData[8];
-        *p_accelZ = (IMUData[11] << 8) + IMUData[10];
+        *p_accelX = ((IMUData[7] << 8) + IMUData[6]) - g_Bias[0];
+        *p_accelY = ((IMUData[9] << 8) + IMUData[8]) - g_Bias[1];
+        *p_accelZ = ((IMUData[11] << 8) + IMUData[10]) - g_Bias[2];
 
         //
         // Compute the accel data into floating point values.
@@ -1816,6 +1936,11 @@ void ProcessIMUData(void)
     }
 }
 
+//*****************************************************************************
+//
+// This function will retrieve the mag data from the BMM150.
+//
+//*****************************************************************************
 void ProcessMagData(void)
 {
     uint8_t IMUData[8];
@@ -1854,4 +1979,64 @@ void ProcessMagData(void)
    //
    // Reset flag.
    g_MagDataFlag = false;
+}
+
+//*****************************************************************************
+//
+// This function will retrieve the accel or gyro data from the BMI160.
+//
+//*****************************************************************************
+void UpdateTrajectory(void)
+{
+    //
+    // TODO: This is where the control law and stuff will go.
+
+    //
+    // Check if we are autonomous or manual.
+    if (!sStatus.bMode)
+    {
+        //
+        // Operating in manual mode.
+        // Check if we are flying or driving.
+        if (!sStatus.bFlyOrDrive)
+        {
+            //
+            // We are driving. Set the parameters sent from the radio.
+
+            //
+            // TODO: Ground travel logic.
+        }
+        else
+        {
+            //
+            // We are flying. Set the parameters sent from the radio.
+
+            //
+            // TODO: Air travel logic.
+        }
+
+    }
+    else
+    {
+        //
+        // Check if radio is sending good data.
+        if (sStatus.bGoodRadioData)
+        {
+            //
+            // Radio data is good, calculate a trajctory.
+
+            //
+            // TODO: Calculate a trajectory.
+        }
+        else
+        {
+            //
+            // Radio data is bad, do nothing.
+
+            //
+            // TODO: Add some logic, so that if we lose radio contact, we
+            // don't necessarily crash...
+        }
+    }
+
 }
