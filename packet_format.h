@@ -32,7 +32,7 @@ struct upacket {
     float roll;     // Current roll angle.
     float pitch;    // Current pitch angle.
     float yaw;      // Current yaw angle.
-    char movement;  // Mode of Operation: Air or Ground? (byte[64])
+    char movement;  // Mode of Operation: Air or Ground? (F or D)(byte[64])
     bool gndmtr1;   // Is ground motor 1 turned on? (byte[65])
     bool gndmtr2;   // Is ground motor 2 turned on?
     bool amtr1; // Is air motor 1 turned on?

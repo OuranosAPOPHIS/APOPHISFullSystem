@@ -52,7 +52,7 @@
 //
 //*****************************************************************************
 #define CONSOLE_ACTIVATED true
-#define RADIO_ACTIVATED false
+#define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
 #define GNDMTRS_ACTIVATED false
 #define SOLARS_ACTIVATED false
@@ -605,12 +605,15 @@ int main(void) {
 
         //
         // Check if it is time to send a packet to the ground station.
-       // if (g_SendPacket)
-            //SendPacket();
+#if RADIO_ACTIVATED
+        if (g_SendPacket)
+            SendPacket();
+#endif
 
         //
         // Update the trajectory.
-        //UpdateTrajectory();
+        if (sStatus.bGoodRadioData)
+        	UpdateTrajectory();
     }
 
     //
@@ -1671,6 +1674,18 @@ void ProcessRadio(void)
         // Change the status of the platform.
         sStatus.bMode = false;
 
+        //
+        // Tell main() we are getting good data.
+        sStatus.bGoodRadioData = true;
+
+        //
+        // Check if we are flying or driving and update the Status.
+        if (g_sRxPack.sControlPacket.flyordrive == g_sRxPack.sControlPacket.fdConfirm)
+        	if (g_sRxPack.sControlPacket.flyordrive == 'D')
+        		sStatus.bFlyOrDrive = false;
+        	else if (g_sRxPack.sControlPacket.flyordrive == 'F')
+        		sStatus.bFlyOrDrive = true;
+
         break;
     }
     case '0':
@@ -1681,7 +1696,7 @@ void ProcessRadio(void)
 
         //
         // Receiving bad data. Tell main to ignore it.
-        sStatus.bGoodRadioData = true;
+        sStatus.bGoodRadioData = false;
 
         break;
     }
@@ -1834,7 +1849,8 @@ void SendPacket(void)
 
     //
     // Mode of operation.
-    g_Pack.pack.movement = 'A';
+    if (g_sRxPack.sControlPacket.flyordrive == g_sRxPack.sControlPacket.fdConfirm)
+    	g_Pack.pack.movement = g_sRxPack.sControlPacket.flyordrive;
 
     //
     // Status bits.
@@ -1988,7 +2004,7 @@ void ProcessMagData(void)
 
 //*****************************************************************************
 //
-// This function will retrieve the accel or gyro data from the BMI160.
+// This function will update the trajectory of the platform.
 //
 //*****************************************************************************
 void UpdateTrajectory(void)
@@ -2005,16 +2021,40 @@ void UpdateTrajectory(void)
         // Check if we are flying or driving.
         if (!sStatus.bFlyOrDrive)
         {
+        	UARTprintf("Driving.\r\n");
             //
             // We are driving. Set the parameters sent from the radio.
+        	// Get the wheel throttles.
+        	int32_t ui32RWThrottle = (int32_t)(g_sRxPack.sControlPacket.throttle * 100);
+        	int32_t ui32LWThrottle = (int32_t)(g_sRxPack.sControlPacket.throttle2 * 100);
+
+        	UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", ui32RWThrottle, ui32LWThrottle);
 
             //
             // TODO: Ground travel logic.
         }
         else
         {
+        	UARTprintf("Flying.\r\n");
             //
             // We are flying. Set the parameters sent from the radio.
+        	// Get the throttle.
+        	int32_t ui32Throttle = (int32_t)(g_sRxPack.sControlPacket.throttle * 100);
+
+        	g_mtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE ;
+        	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtr1Throttle);
+			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtr1Throttle);
+			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtr1Throttle);
+			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtr1Throttle);
+        	UARTprintf("Throttle: %d\r\n", ui32Throttle);
+
+        	//
+			// Get the roll, pitch, yaw.
+        	int32_t ui32Roll = (int32_t)(g_sRxPack.sControlPacket.roll * 100);
+        	int32_t ui32Pitch = (int32_t)(g_sRxPack.sControlPacket.pitch * 100);
+        	int32_t ui32Yaw = (int32_t)(g_sRxPack.sControlPacket.yaw);
+
+        	UARTprintf("Roll: %d\r\nPitch: %d\r\nYaw: %d\r\n", ui32Roll, ui32Pitch, ui32Yaw);
 
             //
             // TODO: Air travel logic.
