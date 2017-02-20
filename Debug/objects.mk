@@ -4,5 +4,5 @@
 
 USER_OBJS :=
 
-LIBS := -llibc.a -l"E:/TM4C1294XL/driverlib/ccs/Debug/driverlib.lib" -l"E:/TM4C1294XL/sensorlib/ccs/Debug/sensorlib.lib"
+LIBS := -llibc.a -l"C:/TivaWare/TM4C1294XL/driverlib/ccs/Debug/driverlib.lib" -l"C:/TivaWare/TM4C1294XL/sensorlib/ccs/Debug/sensorlib.lib"
 

@@ -4,7 +4,7 @@
 		<cconfiguration id="com.ti.ccstudio.buildDefinitions.TMS470.Debug.1697606833">
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.ti.ccstudio.buildDefinitions.TMS470.Debug.1697606833" moduleId="org.eclipse.cdt.core.settings" name="Debug">
 				<macros>
-					<stringMacro name="SW_ROOT" type="VALUE_PATH_ANY" value="E:\TM4C1294XL"/>
+					<stringMacro name="SW_ROOT" type="VALUE_PATH_ANY" value="C:\TivaWare\TM4C1294XL"/>
 				</macros>
 				<externalSettings/>
 				<extensions>

@@ -51,6 +51,9 @@
 // Defines
 //
 //*****************************************************************************
+
+#define DEBUG true
+
 #define CONSOLE_ACTIVATED true
 #define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
@@ -129,6 +132,8 @@ typedef struct {
 //
 // System throttle structure.
 SystemThrottle sThrottle;
+
+uint32_t g_mtrThrottle = ZEROTHROTTLE;
 
 //
 // Initialize the state of the system.
@@ -1415,6 +1420,39 @@ void Menu(char charReceived)
 
         break;
     }
+#if DEBUG
+    case 'W': // Increase throttle of air motors.
+        {
+            g_mtrThrottle += 100;
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtrThrottle);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtrThrottle);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtrThrottle);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtrThrottle);
+            UARTprintf("Throttle Increase: %d\r\n", g_mtrThrottle);
+            break;
+        }
+        case 'S': // Decrease throttle of air motors.
+        {
+            g_mtrThrottle -= 100;
+            if (g_mtrThrottle < ZEROTHROTTLE)
+                g_mtrThrottle += 100;
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtrThrottle);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtrThrottle);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtrThrottle);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtrThrottle);
+            UARTprintf("Throttle Decrease: %d\r\n", g_mtrThrottle);
+            break;
+        }
+        case 'X': // kill the throttle.
+        {
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
+            g_mtrThrottle = ZEROTHROTTLE;
+            break;
+        }
+#endif
     case 'Y': // Activate the solenoids
     {
         ActivateSolenoids();
