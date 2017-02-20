@@ -13,6 +13,7 @@ ORDERED_OBJS += \
 "./bme280.obj" \
 "./bmi160.obj" \
 "./buttons.obj" \
+"./comp_dcm.obj" \
 "./i2c_driver.obj" \
 "./initializations.obj" \
 "./main.obj" \
@@ -163,8 +164,8 @@ APOPHIS\ v1.0.hex: $(EXE_OUTPUTS)
 # Other Targets
 clean:
 	-$(RM) $(BIN_OUTPUTS__QUOTED)$(EXE_OUTPUTS__QUOTED)
-	-$(RM) "bme280.obj" "bmi160.obj" "buttons.obj" "i2c_driver.obj" "initializations.obj" "main.obj" "mma8452q.obj" "tm4c1294ncpdt_startup_ccs.obj" "uartstdio.obj" 
-	-$(RM) "bme280.d" "bmi160.d" "buttons.d" "i2c_driver.d" "initializations.d" "main.d" "mma8452q.d" "tm4c1294ncpdt_startup_ccs.d" "uartstdio.d" 
+	-$(RM) "bme280.obj" "bmi160.obj" "buttons.obj" "comp_dcm.obj" "i2c_driver.obj" "initializations.obj" "main.obj" "mma8452q.obj" "tm4c1294ncpdt_startup_ccs.obj" "uartstdio.obj" 
+	-$(RM) "bme280.d" "bmi160.d" "buttons.d" "comp_dcm.d" "i2c_driver.d" "initializations.d" "main.d" "mma8452q.d" "tm4c1294ncpdt_startup_ccs.d" "uartstdio.d" 
 	-@echo 'Finished clean'
 	-@echo ' '
 

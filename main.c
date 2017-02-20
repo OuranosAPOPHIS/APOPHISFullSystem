@@ -112,7 +112,23 @@ typedef struct {
     bool bMode;         // Autonomous is true, manual is false.
     bool bPayDeployed;  // Whether the payload has been deployed.
     bool bGoodRadioData;    // Determines whether the radio data is good or not.
+    float fRoll;		// Actual platform roll (degrees).
+    float fPitch;		// Actual platform pitch (degrees).
+    float fYaw;			// Actual platform yaw (degrees).
 } SystemStatus;
+
+typedef struct {
+	float fGndMtrLWThrottle;
+	float fGndMtrRWThrottle;
+	float fAirMtr1Throttle;
+	float fAirMtr2Throttle;
+	float fAirMtr3Throttle;
+	float fAirMtr4Throttle;
+} SystemThrottle;
+
+//
+// System throttle structure.
+SystemThrottle sThrottle;
 
 //
 // Initialize the state of the system.
@@ -121,6 +137,7 @@ SystemStatus sStatus;
 //
 // Global Instance structure to manage the DCM state.
 tCompDCM g_sCompDCMInst;
+bool g_bDCMStarted;
 
 //
 // Radio packet to be sent to the ground station.
@@ -215,6 +232,10 @@ bool g_IMUDataFlag = false;
 float g_accelLSBg = 16384;
 
 //
+// The number of LSB per degree/s for 2000 degrees/s.
+float g_fGyroLSB = 16.4;
+
+//
 // Offset compensation data for the accel and gyro.
 uint8_t g_offsetData[7] = {0};
 uint16_t g_Bias[6] = {0};
@@ -222,6 +243,7 @@ uint16_t g_Bias[6] = {0};
 //
 // Used as global storage for the gyro data.
 int16_t g_gyroDataRaw[3];
+float g_fGyroData[3];
 
 //
 // Used as global storage for the raw mag data.
@@ -275,13 +297,6 @@ int32_t *g_p_t_fine = &g_t_fine;
 //
 // Global flag for when mag data is ready.
 bool g_MagDataFlag = false;
-
-/*
- * Globals to store the throttle level of the air motors.
- */
-//
-// Air motor 1 throttle on PF1
-uint32_t g_mtr1Throttle = ZEROTHROTTLE;
 
 //*****************************************************************************
 //
@@ -485,6 +500,12 @@ int main(void) {
         else
             UARTprintf("BAD CALIBRATION X and Y axes are not flat!!\r\n");
     }
+
+    //
+    // Initialize the DCM.
+    CompDCMInit(&g_sCompDCMInst, 1.0 / 25.0f, 0.3f, 0.7f, 0.0f);
+    g_bDCMStarted = false;
+
 #endif
 
     //
@@ -493,6 +514,15 @@ int main(void) {
     sStatus.bMode = false;
     sStatus.bPayDeployed = false;
     sStatus.bGoodRadioData = false;
+
+    //
+    // Initialize the throttle of the system.
+    sThrottle.fAirMtr1Throttle = ZEROTHROTTLE;
+    sThrottle.fAirMtr2Throttle = ZEROTHROTTLE;
+    sThrottle.fAirMtr3Throttle = ZEROTHROTTLE;
+    sThrottle.fAirMtr4Throttle = ZEROTHROTTLE;
+    sThrottle.fGndMtrRWThrottle = 0.0f;
+    sThrottle.fGndMtrLWThrottle = 0.0f;
 
     //
     // Before starting program, wait for a button press on either switch.
@@ -1321,8 +1351,6 @@ void Menu(char charReceived)
         UARTprintf("1 - Trigger ultra sonic sensor #1.\r\n");
         UARTprintf("2 - Trigger ultra sonic sensor #2.\r\n");
         UARTprintf("Y - Activate solenoid enable pins.\r\n");
-        UARTprintf("W - Increase throttle.\r\n");
-        UARTprintf("S - Decrease throttle.\r\n");
         UARTprintf("X - Stop the motors.\r\n");
         UARTprintf("Q - Quit this program.\r\n");
         break;
@@ -1390,37 +1418,6 @@ void Menu(char charReceived)
     case 'Y': // Activate the solenoids
     {
         ActivateSolenoids();
-        break;
-    }
-    case 'W': // Increase throttle of air motors.
-    {
-        g_mtr1Throttle += 100;
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtr1Throttle);
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtr1Throttle);
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtr1Throttle);
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtr1Throttle);
-        UARTprintf("Throttle Increase: %d\r\n", g_mtr1Throttle);
-        break;
-    }
-    case 'S': // Decrease throttle of air motors.
-    {
-        g_mtr1Throttle -= 100;
-        if (g_mtr1Throttle < ZEROTHROTTLE)
-            g_mtr1Throttle += 100;
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtr1Throttle);
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtr1Throttle);
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtr1Throttle);
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtr1Throttle);
-        UARTprintf("Throttle Decrease: %d\r\n", g_mtr1Throttle);
-        break;
-    }
-    case 'X': // kill the throttle.
-    {
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
-        PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
-        g_mtr1Throttle = ZEROTHROTTLE;
         break;
     }
     }
@@ -1843,9 +1840,9 @@ void SendPacket(void)
 
     //
     // Current orientation.
-    g_Pack.pack.roll = 10;
-    g_Pack.pack.pitch = 12;
-    g_Pack.pack.yaw = 14;
+    g_Pack.pack.roll = sStatus.fRoll;
+    g_Pack.pack.pitch = sStatus.fPitch;
+    g_Pack.pack.yaw = sStatus.fYaw;
 
     //
     // Mode of operation.
@@ -1913,6 +1910,12 @@ void ProcessIMUData(void)
         g_gyroDataRaw[2] = ((IMUData[5] << 8) + IMUData[4]) - g_Bias[5];
 
         //
+        // Convert data to float.
+        g_fGyroData[0] = ((float)(g_gyroDataRaw[0])) / g_fGyroLSB;
+        g_fGyroData[1] = ((float)(g_gyroDataRaw[1])) / g_fGyroLSB;
+        g_fGyroData[2] = ((float)(g_gyroDataRaw[2])) / g_fGyroLSB;
+
+        //
         // Set the accelerometer data.
         *p_accelX = ((IMUData[7] << 8) + IMUData[6]) - g_Bias[0];
         *p_accelY = ((IMUData[9] << 8) + IMUData[8]) - g_Bias[1];
@@ -1923,6 +1926,50 @@ void ProcessIMUData(void)
         g_Pack.pack.accelX = ((float)accelIntData[0]) / g_accelLSBg;
         g_Pack.pack.accelY = ((float)accelIntData[1]) / g_accelLSBg;
         g_Pack.pack.accelZ = ((float)accelIntData[2]) / g_accelLSBg;
+
+        //
+        // Check if this is the first time.
+        if (g_bDCMStarted == 0)
+        {
+            //
+            // Start the DCM.
+            CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX, g_Pack.pack.accelY,
+            		g_Pack.pack.accelZ);
+            CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1], g_fGyroData[2]);
+
+            CompDCMStart(&g_sCompDCMInst);
+        }
+        else
+        {
+        	//
+        	// DCM is already started, just update it.
+        	CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX, g_Pack.pack.accelY,
+        	            		g_Pack.pack.accelZ);
+			CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1], g_fGyroData[2]);
+
+            CompDCMUpdate(&g_sCompDCMInst);
+        }
+
+        //
+        // Get the Euler angles.
+        CompDCMComputeEulers(&g_sCompDCMInst, &sStatus.fRoll, &sStatus.fPitch,
+                                   &sStatus.fYaw);
+
+        //
+        // Flip the roll axis. Positive is roll right.
+        sStatus.fRoll *= -1;
+
+
+        //
+		// Convert Eulers to degrees. 180/PI = 57.29...
+		// Convert Yaw to 0 to 360 to approximate compass headings.
+        sStatus.fRoll *= 57.295779513082320876798154814105f;
+        sStatus.fPitch *= 57.295779513082320876798154814105f;
+        sStatus.fYaw *= 57.295779513082320876798154814105f;
+		if(sStatus.fYaw < 0)
+		{
+			sStatus.fYaw += 360.0f;
+		}
 
         //
         // Loop counter print once per second.
@@ -2041,11 +2088,10 @@ void UpdateTrajectory(void)
         	// Get the throttle.
         	int32_t ui32Throttle = (int32_t)(g_sRxPack.sControlPacket.throttle * 100);
 
-        	g_mtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE ;
-        	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtr1Throttle);
-			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtr1Throttle);
-			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtr1Throttle);
-			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtr1Throttle);
+        	sThrottle.fAirMtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        	sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        	sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        	sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
         	UARTprintf("Throttle: %d\r\n", ui32Throttle);
 
         	//
@@ -2056,8 +2102,91 @@ void UpdateTrajectory(void)
 
         	UARTprintf("Roll: %d\r\nPitch: %d\r\nYaw: %d\r\n", ui32Roll, ui32Pitch, ui32Yaw);
 
-            //
-            // TODO: Air travel logic.
+        	//
+    		// Check the pitch.
+    		// Pitch is less than desired and negative.
+        	if ((sStatus.fPitch < g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch < 0))
+        	{
+        		//
+        		// "Pull Up", increase front motor throttle and decrease back motor throttle.
+        		sThrottle.fAirMtr1Throttle += 1000;
+        	    sThrottle.fAirMtr3Throttle -= 1000;
+        	}
+        	//
+        	// Pitch is greater than desired and negative.
+        	else if ((sStatus.fPitch > g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch < 0))
+        	{
+        		//
+				// "Pull Down", decrease front motor throttle and increase back motor throttle.
+				sThrottle.fAirMtr1Throttle -= 1000;
+				sThrottle.fAirMtr3Throttle += 1000;
+        	}
+        	//
+        	// Pitch is less than desired and positive.
+        	else if ((sStatus.fPitch < g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch > 0))
+        	{
+        		//
+				// "Pull Up", increase front motor throttle and decrease back motor throttle.
+				sThrottle.fAirMtr1Throttle += 1000;
+				sThrottle.fAirMtr3Throttle -= 1000;
+        	}
+        	//
+        	// Pitch is greater than desired and positive.
+        	else if ((sStatus.fPitch > g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch > 0))
+        	{
+        		//
+				// "Pull Down", decrease front motor throttle and increase back motor throttle.
+        		sThrottle.fAirMtr1Throttle -= 1000;
+        		sThrottle.fAirMtr3Throttle += 1000;
+        	}
+
+        	//
+        	// Check the roll.
+        	// Roll is less than desired and negative.
+        	if ((sStatus.fRoll < g_sRxPack.sControlPacket.roll) && (sStatus.fRoll < 0))
+        	{
+        		//
+        		// "Roll right", increase left motor throttle and decrease right motor throttle.
+        		sThrottle.fAirMtr2Throttle -= 1000;
+        		sThrottle.fAirMtr4Throttle += 1000;
+        	}
+        	//
+        	// Roll is greater than desired and negative.
+        	else if ((sStatus.fRoll > g_sRxPack.sControlPacket.roll) && (sStatus.fRoll < 0))
+        	{
+        		//
+				// "Roll Left", increase right motor throttle and decrease left motor throttle.
+        		sThrottle.fAirMtr2Throttle += 1000;
+        		sThrottle.fAirMtr4Throttle -= 1000;
+        	}
+        	//
+        	// Roll is less than desired and positive.
+        	else if ((sStatus.fRoll < g_sRxPack.sControlPacket.roll) && (sStatus.fRoll > 0))
+        	{
+        		//
+				// "Roll Right", increase left motor throttle and decrease right motor throttle.
+        		sThrottle.fAirMtr2Throttle -= 1000;
+        		sThrottle.fAirMtr4Throttle += 1000;
+        	}
+        	//
+        	// Roll is greater than desired and positive.
+        	else if ((sStatus.fRoll > g_sRxPack.sControlPacket.roll) && (sStatus.fRoll > 0))
+        	{
+        		//
+				// "Roll Left", decrease left motor throttle and increase right motor throttle.
+        		sThrottle.fAirMtr2Throttle += 1000;
+        		sThrottle.fAirMtr4Throttle -= 1000;
+        	}
+
+        	//
+        	// TODO: What about yaw?
+
+        	//
+        	// Set the new throttles for the motors.
+        	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.fAirMtr1Throttle);
+			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.fAirMtr2Throttle);
+			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.fAirMtr3Throttle);
+			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.fAirMtr4Throttle);
         }
 
     }
@@ -2068,7 +2197,7 @@ void UpdateTrajectory(void)
         if (sStatus.bGoodRadioData)
         {
             //
-            // Radio data is good, calculate a trajctory.
+            // Radio data is good, calculate a trajectory.
 
             //
             // TODO: Calculate a trajectory.

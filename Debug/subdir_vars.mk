@@ -12,6 +12,7 @@ C_SRCS += \
 ../bme280.c \
 ../bmi160.c \
 ../buttons.c \
+../comp_dcm.c \
 ../i2c_driver.c \
 ../initializations.c \
 ../main.c \
@@ -23,6 +24,7 @@ C_DEPS += \
 ./bme280.d \
 ./bmi160.d \
 ./buttons.d \
+./comp_dcm.d \
 ./i2c_driver.d \
 ./initializations.d \
 ./main.d \
@@ -34,6 +36,7 @@ OBJS += \
 ./bme280.obj \
 ./bmi160.obj \
 ./buttons.obj \
+./comp_dcm.obj \
 ./i2c_driver.obj \
 ./initializations.obj \
 ./main.obj \
@@ -45,6 +48,7 @@ OBJS__QUOTED += \
 "bme280.obj" \
 "bmi160.obj" \
 "buttons.obj" \
+"comp_dcm.obj" \
 "i2c_driver.obj" \
 "initializations.obj" \
 "main.obj" \
@@ -56,6 +60,7 @@ C_DEPS__QUOTED += \
 "bme280.d" \
 "bmi160.d" \
 "buttons.d" \
+"comp_dcm.d" \
 "i2c_driver.d" \
 "initializations.d" \
 "main.d" \
@@ -67,6 +72,7 @@ C_SRCS__QUOTED += \
 "../bme280.c" \
 "../bmi160.c" \
 "../buttons.c" \
+"../comp_dcm.c" \
 "../i2c_driver.c" \
 "../initializations.c" \
 "../main.c" \
