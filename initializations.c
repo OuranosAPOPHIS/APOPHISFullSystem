@@ -607,7 +607,7 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation)
 
     //
     // Initialize the BMM150 to have a 25 Hz update rate.
-    InitBMM150(BOOST_I2C);
+    //InitBMM150(BOOST_I2C);
 
     //
     // Turn off interrupts, since I2CWrite turns them on.

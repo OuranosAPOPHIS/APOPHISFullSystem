@@ -19,6 +19,8 @@
 #include "bmi160.h"
 #include "i2c_driver.h"
 
+#define DEBUG true
+
 //*****************************************************************************
 //
 // This function will initialize the BMI160 Sensor by configuring the
@@ -43,7 +45,9 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
                 uint8_t GyroRate, uint8_t GyroAccuracy, uint8_t MagRate, uint8_t *offsetValues)
 {
     uint8_t txBuffer[2];
+#if DEBUG
     uint8_t state[5] = {0, 0, 0, 0, 0};
+#endif
 
     //
     // First initiate a softreset to boot the device fresh.
@@ -85,13 +89,15 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
     //
-    // 80 ms delay after boot up of mag
-    SysCtlDelay(16000 * 100);
+    // 0.5 ms delay after boot up of mag
+    SysCtlDelay(16000 * 2);
 
+#if DEBUG
     //
     // Check the PMU configuration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_PMU_STATUS, 1, state);
     UARTprintf("PMU Status: 0x%x\n\r", state[0]);
+#endif
 
     //
     // Set the configuration parameters for the accel rate.
@@ -102,10 +108,12 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     // Configure the accelerometer rate.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the accel rate configuration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_ACC_CONFIG, 1, state);
     UARTprintf("Accel Rate: 0x%x\n\r", state[0]);
+#endif
 
     //
     // Set the configuration parameters of the accel range.
@@ -116,10 +124,12 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     // Configure the accelerometer range.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the accel g' configuration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_ACC_RANGE, 1, state);
     UARTprintf("Accel G Setting: 0x%x\n\r", state[0]);
+#endif
 
     //
     // Set the configuration parameters of the gyro rate.
@@ -130,10 +140,12 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     // Configure the gyro rate.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the gyro rate configuration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_GYR_CONFIG, 1, state);
     UARTprintf("Gyro Rate: 0x%x\n\r", state[0]);
+#endif
 
     //
     // Set the configuration parameters for the gyro range.
@@ -144,6 +156,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     // Configure the gyro range.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the gyro accuracy configuration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_GYR_RANGE, 1, state);
@@ -153,6 +166,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     // Check the Fast Offset Compensation values.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_FOC_CONFIG, 1, state);
     UARTprintf("(FOC CONF): 0x%x\n\r", state[0]);
+#endif
 
     //
     // Set up the mag interface.
@@ -161,17 +175,18 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 
     //
     // Write the setting to the device.
-    //I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
     txBuffer[0] = BMI160_MAG_IF + 0x01;
     txBuffer[1] = BMI160_MAG_BURST_READ;
-   // I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the configuration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_MAG_IF, 5, state);
     UARTprintf("(MAG IF): 0x%x, 0x%x, 0x%x, 0x%x, 0x%x\n\r", state[0], state[1], state[2], state[3], state[4]);
-
+#endif
 
     //
     // Set up the device interface as I2C primary and Mag on.
@@ -180,12 +195,14 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 
     //
     // Write the setting to the device.
-    //I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the configuration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_IF_CONFIG, 1, state);
     UARTprintf("(IF CONF): 0x%x\n\r", state[0]);
+#endif
 
     //
     // Set the configuration parameters for the mag rate.
@@ -194,12 +211,14 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 
     //
     // Configure the mag rate.
-   // I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the configuration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_MAG_CONFIG, 1, state);
     UARTprintf("Mag Rate: 0x%x\n\r", state[0]);
+#endif
 
     //
     // Enable INT1 on the device as the data ready pin.
@@ -228,10 +247,12 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     // Write these values to the device.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the interrupt configuration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_INT_ENABLE, 3, state);
     UARTprintf("Interrupt Configuration:\n\r(INT_EN): 0x%x, 0x%x, 0x%x\n\r", state[0], state[1], state[2]);
+#endif
 
     //
     // Configure INT1.
@@ -260,10 +281,12 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     // Write these values to the device.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the interrupt configuration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_INT_MAP, 3, state);
     UARTprintf("(INT_MAP): 0x%x, 0x%x, 0x%x\n\r", state[0], state[1], state[2]);
+#endif
 
     //
     // Configure INT1.
@@ -278,6 +301,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     // Now get the offset values from the device for proper calibration.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_OFFSET, BMI160_OFFSET_SIZE, offsetValues);
 
+#if DEBUG
     //
     // Check the interrupt configuration
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_INT_OUT_CTRL, 1, state);
@@ -287,6 +311,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     // Check the error register for errors.
     I2CRead(I2C_base, BMI160_ADDRESS, BMI160_ERR_REG, 1, state);
     UARTprintf("(ERR_REG): 0x%x\n\r", state[0]);
+#endif
 }
 
 /*
@@ -309,10 +334,12 @@ void InitBMM150(uint32_t I2C_base)
     txBuffer[1] = 0x30;
     I2CBurstWrite(I2C_base, BMM150_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the error register for errors.
     I2CRead(I2C_base, BMM150_ADDRESS, 0x4C, 1, state);
     UARTprintf("(MAG 0x4C): 0x%x\n\r", state[0]);
+#endif
 
     //
     // Configure the interrupt operation.
@@ -320,9 +347,11 @@ void InitBMM150(uint32_t I2C_base)
     txBuffer[1] = 0xC5;
     I2CBurstWrite(I2C_base, BMM150_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the error register for errors.
     I2CRead(I2C_base, BMM150_ADDRESS, 0x4E, 1, state);
     UARTprintf("(MAG 0x4E): 0x%x\n\r", state[0]);
+#endif
 }
 

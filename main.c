@@ -645,12 +645,14 @@ int main(void) {
             SendPacket();
 #endif
 
+#if AIRMTRS_ACTIVATED
         //
         // Update the trajectory.
         if (sStatus.bGoodRadioData)
         	UpdateTrajectory();
-    }
+#endif
 
+    }
     //
     // Program ending. Do any clean up that's needed.
 
@@ -2124,98 +2126,134 @@ void UpdateTrajectory(void)
             //
             // We are flying. Set the parameters sent from the radio.
         	// Get the throttle.
-        	int32_t ui32Throttle = (int32_t)(g_sRxPack.sControlPacket.throttle * 100);
+        	uint32_t ui32Throttle = (int32_t)(g_sRxPack.sControlPacket.throttle * 100);
 
-        	sThrottle.fAirMtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
-        	sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
-        	sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
-        	sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
-        	UARTprintf("Throttle: %d\r\n", ui32Throttle);
+        	if(g_sRxPack.sControlPacket.throttle <= 0)
+        	{
+        		ui32Throttle = 0;
+        		sThrottle.fAirMtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        		sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        	    sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        	    sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        	}
+        	else
+        	{
+        		sThrottle.fAirMtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        		sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        		sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        		sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        		UARTprintf("Throttle: %d\r\n", ui32Throttle);
 
-        	//
-			// Get the roll, pitch, yaw.
-        	int32_t ui32Roll = (int32_t)(g_sRxPack.sControlPacket.roll * 100);
-        	int32_t ui32Pitch = (int32_t)(g_sRxPack.sControlPacket.pitch * 100);
-        	int32_t ui32Yaw = (int32_t)(g_sRxPack.sControlPacket.yaw);
+        		//
+        		// Get the roll, pitch, yaw.
+        		int32_t ui32Roll = (int32_t)(g_sRxPack.sControlPacket.roll * 100);
+        		int32_t ui32Pitch = (int32_t)(g_sRxPack.sControlPacket.pitch * 100);
+        		int32_t ui32Yaw = (int32_t)(g_sRxPack.sControlPacket.yaw);
 
-        	UARTprintf("Roll: %d\r\nPitch: %d\r\nYaw: %d\r\n", ui32Roll, ui32Pitch, ui32Yaw);
+        		UARTprintf("Roll: %d\r\nPitch: %d\r\nYaw: %d\r\n", ui32Roll, ui32Pitch, ui32Yaw);
 
-        	//
-    		// Check the pitch.
-    		// Pitch is less than desired and negative.
-        	if ((sStatus.fPitch < g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch < 0))
-        	{
         		//
-        		// "Pull Up", increase front motor throttle and decrease back motor throttle.
-        		sThrottle.fAirMtr1Throttle += 1000;
-        	    sThrottle.fAirMtr3Throttle -= 1000;
-        	}
-        	//
-        	// Pitch is greater than desired and negative.
-        	else if ((sStatus.fPitch > g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch < 0))
-        	{
-        		//
-				// "Pull Down", decrease front motor throttle and increase back motor throttle.
-				sThrottle.fAirMtr1Throttle -= 1000;
-				sThrottle.fAirMtr3Throttle += 1000;
-        	}
-        	//
-        	// Pitch is less than desired and positive.
-        	else if ((sStatus.fPitch < g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch > 0))
-        	{
-        		//
-				// "Pull Up", increase front motor throttle and decrease back motor throttle.
-				sThrottle.fAirMtr1Throttle += 1000;
-				sThrottle.fAirMtr3Throttle -= 1000;
-        	}
-        	//
-        	// Pitch is greater than desired and positive.
-        	else if ((sStatus.fPitch > g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch > 0))
-        	{
-        		//
-				// "Pull Down", decrease front motor throttle and increase back motor throttle.
-        		sThrottle.fAirMtr1Throttle -= 1000;
-        		sThrottle.fAirMtr3Throttle += 1000;
-        	}
+        		// Check if the pitch error is less than 0.5 or -0.5.
+        		if ((sStatus.fPitch - g_sRxPack.sControlPacket.pitch > 0.5f) || (sStatus.fPitch - g_sRxPack.sControlPacket.pitch < -0.5f))
+        		{
+        			//
+        			// Check the pitch.
+        			// Pitch is less than desired and negative.
+        			if ((sStatus.fPitch < g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch < 0))
+        			{
+        				//
+        				// "Pull Up", increase front motor throttle and decrease back motor throttle.
+        				sThrottle.fAirMtr1Throttle += 500;
+        				sThrottle.fAirMtr3Throttle -= 500;
 
-        	//
-        	// Check the roll.
-        	// Roll is less than desired and negative.
-        	if ((sStatus.fRoll < g_sRxPack.sControlPacket.roll) && (sStatus.fRoll < 0))
-        	{
-        		//
-        		// "Roll right", increase left motor throttle and decrease right motor throttle.
-        		sThrottle.fAirMtr2Throttle -= 1000;
-        		sThrottle.fAirMtr4Throttle += 1000;
-        	}
-        	//
-        	// Roll is greater than desired and negative.
-        	else if ((sStatus.fRoll > g_sRxPack.sControlPacket.roll) && (sStatus.fRoll < 0))
-        	{
-        		//
-				// "Roll Left", increase right motor throttle and decrease left motor throttle.
-        		sThrottle.fAirMtr2Throttle += 1000;
-        		sThrottle.fAirMtr4Throttle -= 1000;
-        	}
-        	//
-        	// Roll is less than desired and positive.
-        	else if ((sStatus.fRoll < g_sRxPack.sControlPacket.roll) && (sStatus.fRoll > 0))
-        	{
-        		//
-				// "Roll Right", increase left motor throttle and decrease right motor throttle.
-        		sThrottle.fAirMtr2Throttle -= 1000;
-        		sThrottle.fAirMtr4Throttle += 1000;
-        	}
-        	//
-        	// Roll is greater than desired and positive.
-        	else if ((sStatus.fRoll > g_sRxPack.sControlPacket.roll) && (sStatus.fRoll > 0))
-        	{
-        		//
-				// "Roll Left", decrease left motor throttle and increase right motor throttle.
-        		sThrottle.fAirMtr2Throttle += 1000;
-        		sThrottle.fAirMtr4Throttle -= 1000;
-        	}
+        				UARTprintf("Neg Pitch and Pull Up\r\n");
+        			}
+        			//
+        			// Pitch is greater than desired and negative.
+        			else if ((sStatus.fPitch > g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch < 0))
+        			{
+        				//
+        				// "Pull Down", decrease front motor throttle and increase back motor throttle.
+        				sThrottle.fAirMtr1Throttle -= 500;
+        				sThrottle.fAirMtr3Throttle += 500;
 
+        				UARTprintf("Neg Pitch and Pull Down\r\n");
+        			}
+        			//
+        			// Pitch is less than desired and positive.
+        			else if ((sStatus.fPitch < g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch > 0))
+        			{
+        				//
+        				// "Pull Up", increase front motor throttle and decrease back motor throttle.
+        				sThrottle.fAirMtr1Throttle += 500;
+        				sThrottle.fAirMtr3Throttle -= 500;
+
+        				UARTprintf("Pos Pitch and Pull Up\r\n");
+        			}
+        			//
+        			// Pitch is greater than desired and positive.
+        			else if ((sStatus.fPitch > g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch > 0))
+        			{
+        				//
+        				// "Pull Down", decrease front motor throttle and increase back motor throttle.
+        				sThrottle.fAirMtr1Throttle -= 500;
+        				sThrottle.fAirMtr3Throttle += 500;
+
+        				UARTprintf("Pos Pitch and Pull Down\r\n");
+        			}
+        		}
+
+        		//
+        		// Check if roll error is greater than 0.5 degrees.
+        		if ((sStatus.fRoll - g_sRxPack.sControlPacket.roll > 0.5f) || (sStatus.fRoll - g_sRxPack.sControlPacket.roll < -0.5f))
+        		{
+        			//
+        			// Check the roll.
+        			// Roll is less than desired and negative.
+        			if ((sStatus.fRoll < g_sRxPack.sControlPacket.roll) && (sStatus.fRoll < 0))
+        			{
+        				//
+        				// "Roll right", increase left motor throttle and decrease right motor throttle.
+        				sThrottle.fAirMtr2Throttle -= 500;
+        				sThrottle.fAirMtr4Throttle += 500;
+
+        				UARTprintf("Neg Roll and Roll Right\r\n");
+        			}
+        			//
+        			// Roll is greater than desired and negative.
+        			else if ((sStatus.fRoll > g_sRxPack.sControlPacket.roll) && (sStatus.fRoll < 0))
+        			{
+        				//
+        				// "Roll Left", increase right motor throttle and decrease left motor throttle.
+        				sThrottle.fAirMtr2Throttle += 500;
+        				sThrottle.fAirMtr4Throttle -= 500;
+
+        				UARTprintf("Neg Roll and Roll Left\r\n");
+        			}
+        			//
+        			// Roll is less than desired and positive.
+        			else if ((sStatus.fRoll < g_sRxPack.sControlPacket.roll) && (sStatus.fRoll > 0))
+        			{
+        				//
+        				// "Roll Right", increase left motor throttle and decrease right motor throttle.
+        				sThrottle.fAirMtr2Throttle -= 500;
+        				sThrottle.fAirMtr4Throttle += 500;
+
+        				UARTprintf("Pos Roll and Roll Right\r\n");
+        			}
+        			//
+        			// Roll is greater than desired and positive.
+        			else if ((sStatus.fRoll > g_sRxPack.sControlPacket.roll) && (sStatus.fRoll > 0))
+        			{
+        				//
+        				// "Roll Left", decrease left motor throttle and increase right motor throttle.
+        				sThrottle.fAirMtr2Throttle += 500;
+        				sThrottle.fAirMtr4Throttle -= 500;
+
+        				UARTprintf("Pos Roll and Roll Left\r\n");
+        			}
+        		}
+        	}
         	//
         	// TODO: What about yaw?
 
