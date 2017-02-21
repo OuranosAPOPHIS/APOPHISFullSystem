@@ -133,7 +133,7 @@ typedef struct {
 // System throttle structure.
 SystemThrottle sThrottle;
 
-uint32_t g_mtrThrottle = ZEROTHROTTLE;
+uint32_t g_mtrThrottle = ZEROTHROTTLE1;
 
 //
 // Initialize the state of the system.
@@ -522,10 +522,10 @@ int main(void) {
 
     //
     // Initialize the throttle of the system.
-    sThrottle.fAirMtr1Throttle = ZEROTHROTTLE;
-    sThrottle.fAirMtr2Throttle = ZEROTHROTTLE;
-    sThrottle.fAirMtr3Throttle = ZEROTHROTTLE;
-    sThrottle.fAirMtr4Throttle = ZEROTHROTTLE;
+    sThrottle.fAirMtr1Throttle = PWMINITIALZE;
+    sThrottle.fAirMtr2Throttle = PWMINITIALZE;
+    sThrottle.fAirMtr3Throttle = PWMINITIALZE;
+    sThrottle.fAirMtr4Throttle = PWMINITIALZE;
     sThrottle.fGndMtrRWThrottle = 0.0f;
     sThrottle.fGndMtrLWThrottle = 0.0f;
 
@@ -1436,7 +1436,7 @@ void Menu(char charReceived)
         case 'S': // Decrease throttle of air motors.
         {
             g_mtrThrottle -= 100;
-            if (g_mtrThrottle < ZEROTHROTTLE)
+            if (g_mtrThrottle < ZEROTHROTTLE1)
                 g_mtrThrottle += 100;
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtrThrottle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtrThrottle);
@@ -1447,11 +1447,11 @@ void Menu(char charReceived)
         }
         case 'X': // kill the throttle.
         {
-            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
-            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
-            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
-            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
-            g_mtrThrottle = ZEROTHROTTLE;
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE1);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE1);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE1);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE1);
+            g_mtrThrottle = ZEROTHROTTLE1;
             break;
         }
 #endif
@@ -2131,17 +2131,17 @@ void UpdateTrajectory(void)
         	if(g_sRxPack.sControlPacket.throttle <= 0)
         	{
         		ui32Throttle = 0;
-        		sThrottle.fAirMtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
-        		sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
-        	    sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
-        	    sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        		sThrottle.fAirMtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE1;
+        		sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE2;
+        	    sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE3;
+        	    sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE4;
         	}
         	else
         	{
-        		sThrottle.fAirMtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
-        		sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
-        		sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
-        		sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE;
+        		sThrottle.fAirMtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE1;
+        		sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE2;
+        		sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE3;
+        		sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE4;
         		UARTprintf("Throttle: %d\r\n", ui32Throttle);
 
         		//
