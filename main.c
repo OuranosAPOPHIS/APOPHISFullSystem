@@ -60,7 +60,7 @@
 #define GNDMTRS_ACTIVATED false
 #define SOLARS_ACTIVATED false
 #define ULTRASONIC_ACTIVATED false
-#define SOLENOIDS_ACTIVATED false
+#define SOLENOIDS_ACTIVATED true
 #define IMU_ACTIVATED true
 #define ALTIMETER_ACTIVATED false
 #define AIRMTRS_ACTIVATED true
@@ -114,6 +114,7 @@ typedef struct {
     bool bFlyOrDrive;   // Drive is false, fly is true.
     bool bMode;         // Autonomous is true, manual is false.
     bool bPayDeployed;  // Whether the payload has been deployed.
+    bool bPayDeploying; // Indicates if the payload is being deployed.
     bool bGoodRadioData;    // Determines whether the radio data is good or not.
     float fRoll;		// Actual platform roll (degrees).
     float fPitch;		// Actual platform pitch (degrees).
@@ -754,13 +755,13 @@ void RadioIntHandler(void)
     while(UARTCharsAvail(RADIO_UART))
     {
         i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
-        if (ui8Index >= (sizeof(uRxPack) - 1)) ui8Index = 0;
+        if (ui8Index >= (sizeof(uRxPack))) ui8Index = 0;
         if (i32RxChar != -1) {
             if (bValidData) {
                 //
                 // Get the chars over the UART.
                 g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
-                if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0') && ui8Index >= sizeof(tGSTPacket) - 1) || (g_sRxPack.ui8Data[3] == 'C' && ui8Index >= sizeof(tGSCPacket) - 1)) {
+                if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0') && ui8Index >= sizeof(tGSTPacket)) || (g_sRxPack.ui8Data[3] == 'C' && ui8Index >= sizeof(tGSCPacket))) {
                     ui8Index = 0;
                     g_RadioFlag = true;
                     bValidData = false;
@@ -1452,6 +1453,7 @@ void Menu(char charReceived)
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE1);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE1);
             g_mtrThrottle = ZEROTHROTTLE1;
+            UARTprintf("Throttle Decrease: %d\r\n", g_mtrThrottle);
             break;
         }
 #endif
@@ -1723,6 +1725,15 @@ void ProcessRadio(void)
         	else if (g_sRxPack.sControlPacket.flyordrive == 'F')
         		sStatus.bFlyOrDrive = true;
 
+        //
+        // Check if we should deploy the payload.
+        if ((!sStatus.bPayDeployed) && (g_sRxPack.sControlPacket.payloadRelease == g_sRxPack.sControlPacket.prConfirm))
+            if ((g_sRxPack.sControlPacket.payloadRelease == 1) && (!sStatus.bPayDeploying))
+            {
+                sStatus.bPayDeploying = true;
+                ActivateSolenoids();
+            }
+
         break;
     }
     case '0':
@@ -1852,6 +1863,7 @@ void DeactivateSolenoids(void)
 
     //
     // Update system status.
+    sStatus.bPayDeploying = false;
     sStatus.bPayDeployed = true;
 }
 
@@ -1903,7 +1915,7 @@ void SendPacket(void)
     g_Pack.pack.uS4 = false;
     g_Pack.pack.uS5 = false;
     g_Pack.pack.uS6 = false;
-    g_Pack.pack.payBay = false;
+    g_Pack.pack.payBay = sStatus.bPayDeployed;
 
     //
     // Send the data over the radio.
