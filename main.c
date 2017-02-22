@@ -303,10 +303,6 @@ float g_Temp;
 int32_t g_t_fine;
 int32_t *g_p_t_fine = &g_t_fine;
 
-//
-// Global flag for when mag data is ready.
-bool g_MagDataFlag = false;
-
 //*****************************************************************************
 //
 // Start of program.
@@ -533,6 +529,16 @@ int main(void) {
     sThrottle.fGndMtrRWThrottle = 0.0f;
     sThrottle.fGndMtrLWThrottle = 0.0f;
 
+	//
+	// Set the magic packets.
+	g_Pack.pack.Magic[0] = 0xFF;
+	g_Pack.pack.Magic[1] = 0xFF;
+	g_Pack.pack.Magic[2] = 0xFF;
+	if (sStatus.bFlyOrDrive)
+		g_Pack.pack.movement = 'D';
+	else
+		g_Pack.pack.movement = 'F';
+
     //
     // Before starting program, wait for a button press on either switch.
     UARTprintf("Initialization Complete!\r\nPress left button to start.");
@@ -595,11 +601,6 @@ int main(void) {
         // Check if accel or gyro data is ready.
         if (g_IMUDataFlag)
             ProcessIMUData();
-
-        //
-        // Check if mag data is ready.
-        if (g_MagDataFlag)
-            ProcessMagData();
 
         //
         // Check if pressure or temperature data is ready.
@@ -780,7 +781,8 @@ void RadioIntHandler(void)
                         bValidData = true;
                         ui8MagicCount = 0;
                     }
-                } else {
+                } 
+				else {
                     ui8MagicCount++;
                 }
             }
@@ -1156,14 +1158,6 @@ void BMI160IntHandler(void)
         // IMU data is ready.
         g_IMUDataFlag = true;
     }
-    else if (ui32Status == MAG_GPIO_INT)
-    {
-        //
-        // Magnetometer data is ready.
-        g_MagDataFlag = true;
-    }
-
-
 }
 
 //*****************************************************************************
@@ -1902,22 +1896,24 @@ void SendPacket(void)
     //
     // Mode of operation.
     if (g_sRxPack.sControlPacket.flyordrive == g_sRxPack.sControlPacket.fdConfirm)
-    	g_Pack.pack.movement = g_sRxPack.sControlPacket.flyordrive;
-
+    	if (g_sRxPack.sControlPacket.flyordrive == 'F')
+    		g_Pack.pack.movement = 'F'; //g_sRxPack.sControlPacket.flyordrive;
+    	else
+    		g_Pack.pack.movement = 'F';
     //
     // Status bits.
-    g_Pack.pack.gndmtr1 = false;
-    g_Pack.pack.gndmtr2 = false;
-    g_Pack.pack.amtr1 = false;
-    g_Pack.pack.amtr2 = false;
-    g_Pack.pack.amtr3 = false;
-    g_Pack.pack.amtr4 = false;
-    g_Pack.pack.uS1 = false;
-    g_Pack.pack.uS2 = false;
-    g_Pack.pack.uS3 = false;
-    g_Pack.pack.uS4 = false;
-    g_Pack.pack.uS5 = false;
-    g_Pack.pack.uS6 = false;
+    g_Pack.pack.gndmtr1 = true;
+    g_Pack.pack.gndmtr2 = true;
+    g_Pack.pack.amtr1 = true;
+    g_Pack.pack.amtr2 = true;
+    g_Pack.pack.amtr3 = true;
+    g_Pack.pack.amtr4 = true;
+    g_Pack.pack.uS1 = true;
+    g_Pack.pack.uS2 = true;
+    g_Pack.pack.uS3 = true;
+    g_Pack.pack.uS4 = true;
+    g_Pack.pack.uS5 = true;
+    g_Pack.pack.uS6 = true;
     g_Pack.pack.payBay = sStatus.bPayDeployed;
 
     //
