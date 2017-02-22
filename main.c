@@ -63,7 +63,7 @@
 #define SOLENOIDS_ACTIVATED true
 #define IMU_ACTIVATED true
 #define ALTIMETER_ACTIVATED false
-#define AIRMTRS_ACTIVATED true
+#define AIRMTRS_ACTIVATED false
 
 #define ONEG 16384
 
@@ -98,7 +98,6 @@ void ActivateSolenoids(void);
 void DeactivateSolenoids(void);
 void SendPacket(void);
 void ProcessIMUData(void);
-void ProcessMagData(void);
 void WaitForButtonPress(uint8_t ButtonState);
 void UpdateTrajectory(void);
 
@@ -240,6 +239,10 @@ float g_accelLSBg = 16384;
 //
 // The number of LSB per degree/s for 2000 degrees/s.
 float g_fGyroLSB = 16.4;
+
+//
+// Float conversion for mag data.
+float g_fMagLSB = 16;
 
 //
 // Offset compensation data for the accel and gyro.
@@ -509,7 +512,7 @@ int main(void) {
 
     //
     // Initialize the DCM.
-    CompDCMInit(&g_sCompDCMInst, 1.0 / 25.0f, 0.3f, 0.7f, 0.0f);
+    CompDCMInit(&g_sCompDCMInst, 1.0 / 25.0f, 0.4f, 0.2f, 0.4f);
     g_bDCMStarted = false;
 
 #endif
@@ -1937,8 +1940,10 @@ void SendPacket(void)
 void ProcessIMUData(void)
 {
     uint8_t status;
-    uint8_t IMUData[12]; // raw accel and gyro data
+    uint8_t IMUData[20]; // raw accel and gyro data
     int16_t accelIntData[3];
+    uint8_t ui8MagData[4];
+    float fMagData[4];
     int16_t *p_accelX = &accelIntData[0];
     int16_t *p_accelY = &accelIntData[1];
     int16_t *p_accelZ = &accelIntData[2];
@@ -1949,17 +1954,31 @@ void ProcessIMUData(void)
 
     //
     // Check what status returned.
-    if ((status & 0xC0) == (BMI160_ACC_RDY | BMI160_GYR_RDY))
+    if ((status & 0xD0) == (BMI160_ACC_RDY | BMI160_GYR_RDY | BMI160_MAG_RDY))
     {
         //
-        // Then get the data for both the accel and gyro.
-        I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 12, IMUData);
+        // Then get the data for both the accel, gyro and mag
+        I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_MAG_X, 20, IMUData);
+
+        //
+        // Get the mag data.
+        ui8MagData[0] = ((IMUData[1] << 8) + IMUData[0]);
+        ui8MagData[1] = ((IMUData[3] << 8) + IMUData[2]);
+        ui8MagData[2] = ((IMUData[5] << 8) + IMUData[4]);
+        ui8MagData[3] = ((IMUData[7] << 8) + IMUData[6]);
+
+        //
+        // Convert to float for DCM.
+        fMagData[0] = ui8MagData[0] / g_fMagLSB;
+        fMagData[1] = ui8MagData[1] / g_fMagLSB;
+        fMagData[2] = ui8MagData[2] / g_fMagLSB;
+
 
         //
         // Set the gyro data to the global variables.
-        g_gyroDataRaw[0] = ((IMUData[1] << 8) + IMUData[0]) - g_Bias[3];
-        g_gyroDataRaw[1] = ((IMUData[3] << 8) + IMUData[2]) - g_Bias[4];
-        g_gyroDataRaw[2] = ((IMUData[5] << 8) + IMUData[4]) - g_Bias[5];
+        g_gyroDataRaw[0] = ((IMUData[9] << 8) + IMUData[8]) - g_Bias[3];
+        g_gyroDataRaw[1] = ((IMUData[11] << 8) + IMUData[10]) - g_Bias[4];
+        g_gyroDataRaw[2] = ((IMUData[13] << 8) + IMUData[12]) - g_Bias[5];
 
         //
         // Convert data to float.
@@ -1969,9 +1988,9 @@ void ProcessIMUData(void)
 
         //
         // Set the accelerometer data.
-        *p_accelX = ((IMUData[7] << 8) + IMUData[6]) - g_Bias[0];
-        *p_accelY = ((IMUData[9] << 8) + IMUData[8]) - g_Bias[1];
-        *p_accelZ = ((IMUData[11] << 8) + IMUData[10]) - g_Bias[2];
+        *p_accelX = ((IMUData[15] << 8) + IMUData[14]) - g_Bias[0];
+        *p_accelY = ((IMUData[17] << 8) + IMUData[16]) - g_Bias[1];
+        *p_accelZ = ((IMUData[19] << 8) + IMUData[18]) - g_Bias[2];
 
         //
         // Compute the accel data into floating point values.
@@ -1989,6 +2008,8 @@ void ProcessIMUData(void)
             		g_Pack.pack.accelZ);
             CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1], g_fGyroData[2]);
 
+            CompDCMMagnetoUpdate(&g_sCompDCMInst, fMagData[0], fMagData[1], fMagData[2]);
+
             CompDCMStart(&g_sCompDCMInst);
         }
         else
@@ -1998,6 +2019,8 @@ void ProcessIMUData(void)
         	CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX, g_Pack.pack.accelY,
         	            		g_Pack.pack.accelZ);
 			CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1], g_fGyroData[2]);
+
+            CompDCMMagnetoUpdate(&g_sCompDCMInst, ui8MagData[0], ui8MagData[1], ui8MagData[2]);
 
             CompDCMUpdate(&g_sCompDCMInst);
         }
@@ -2054,51 +2077,6 @@ void ProcessIMUData(void)
         TurnOnLED(1);
         g_LED1On = true;
     }
-}
-
-//*****************************************************************************
-//
-// This function will retrieve the mag data from the BMM150.
-//
-//*****************************************************************************
-void ProcessMagData(void)
-{
-    uint8_t IMUData[8];
-    uint8_t status;
-
-    //
-    // First check the status for which data is ready.
-    I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
-
-    if((status && 0x20) == BMI160_MAG_RDY)
-    {
-        //
-        // Magnetometer data is ready. So get it.
-        I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_MAG_X, 4, IMUData);
-
-        //
-        // Assign it to global variables.
-        g_magDataRaw[0] = (IMUData[1] << 8) + IMUData[0];
-        g_magDataRaw[1] = (IMUData[3] << 8) + IMUData[2];
-        g_magDataRaw[2] = (IMUData[5] << 8) + IMUData[4];
-        g_magDataRaw[3] = (IMUData[7] << 8) + IMUData[6];
-
-        //
-        // Loop counter, print once per second.
-        if (g_loopCount && g_PrintRawBMIData)
-        {
-            UARTprintf("MagX = %d\r\nMagY = %d\r\n", g_magDataRaw[0], g_magDataRaw[1]);
-            UARTprintf("MagZ = %d\r\n", g_magDataRaw[2]);
-
-            //
-            // Reset loop count.
-            g_loopCount = false;
-        }
-    }
-
-    //
-    // Reset flag.
-    g_MagDataFlag = false;
 }
 
 //*****************************************************************************

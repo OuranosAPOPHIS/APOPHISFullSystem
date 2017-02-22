@@ -171,7 +171,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
     //
     // Set up the mag interface.
     txBuffer[0] = BMI160_MAG_IF;
-    txBuffer[1] = BMI160_MAG_ADDRESS;
+    txBuffer[1] = BMI160_MAG_ADDRESS << 1;
 
     //
     // Write the setting to the device.
@@ -317,7 +317,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 /*
  * Initialization for the BMM150 magnetometer.
  */
-void InitBMM150(uint32_t I2C_base)
+/*void InitBMM150(uint32_t I2C_base)
 {
     uint8_t txBuffer[2];
     uint8_t state[1];
@@ -355,3 +355,4 @@ void InitBMM150(uint32_t I2C_base)
 #endif
 }
 
+*/

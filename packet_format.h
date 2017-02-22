@@ -18,6 +18,7 @@
 struct upacket {
     char Magic[3]; // padding for detecting start of packet.
     char movement;  // Mode of Operation: Air or Ground? (F or D)(byte[64])
+
     float UTC; // Current UTC
     float lat;  // Latitude of platform.
     float lon;  // Longitude of platform.
@@ -34,19 +35,24 @@ struct upacket {
     float roll;     // Current roll angle.
     float pitch;    // Current pitch angle.
     float yaw;      // Current yaw angle.
+
     bool gndmtr1;   // Is ground motor 1 turned on? (byte[65])
     bool gndmtr2;   // Is ground motor 2 turned on?
     bool amtr1; // Is air motor 1 turned on?
     bool amtr2; // Is air motor 2 turned on?
+
     bool amtr3; // Is air motor 3 turned on?
     bool amtr4; // Is air motor 4 turned on?
     bool uS1;   // Obstacle detected on sensor 1?
     bool uS2;   // Obstacle detected on sensor 2?
+
     bool uS3;   // Obstacle detected on sensor 3?
     bool uS4;   // Obstacle detected on sensor 4?
     bool uS5;   // Obstacle detected on sensor 5?
     bool uS6;   // Obstacle detected on sensor 6?
+
     bool payBay;    // Has the payload been released?
+    char padding[3]; // More silly padding.
 }; // Size of the microcontroller packet is 78 bytes.
 
 /*

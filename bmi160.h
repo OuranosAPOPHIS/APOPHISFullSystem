@@ -23,7 +23,7 @@
 // Default address is 0x68, but TI
 // set this up as 0x69.
 #define BMI160_ADDRESS 0x69
-#define BMM150_ADDRESS 0x13
+#define BMI160_MAG_ADDRESS 0x13
 
 /*
  * Define the relevant register addresses.
@@ -200,7 +200,6 @@
  * Register: MAG_IF
  *
  */
-#define BMI160_MAG_ADDRESS 0x13
 #define BMI160_MAG_BURST_READ 0x03
 
 /*
@@ -447,7 +446,8 @@
 void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
                 uint8_t GyroRate, uint8_t GyroAccuracy, uint8_t MagRate, uint8_t *offsetValues);
 
-void InitBMM150(uint32_t I2C_base);
+/*
+void InitBMM150(uint32_t I2C_base); */
 
 
 #endif /* BMI160_H_ */
