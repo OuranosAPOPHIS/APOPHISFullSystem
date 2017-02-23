@@ -53,7 +53,7 @@ struct upacket {
 
     bool payBay;    // Has the payload been released?
     char padding[3]; // More silly padding.
-}; // Size of the microcontroller packet is 78 bytes.
+}; // Size of the microcontroller packet is 84 bytes.
 
 /*
  * Union to define the same memory space
@@ -61,7 +61,7 @@ struct upacket {
  */
 typedef union {
     struct upacket pack;    // Structure as defined above.
-    char str[78]; // character addressing of same memory.
+    char str[84]; // character addressing of same memory.
 } uTxPack;
 
 /*

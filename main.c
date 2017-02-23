@@ -53,6 +53,7 @@
 //*****************************************************************************
 
 #define DEBUG true
+#define APOPHIS false
 
 #define CONSOLE_ACTIVATED true
 #define RADIO_ACTIVATED true
@@ -63,7 +64,7 @@
 #define SOLENOIDS_ACTIVATED true
 #define IMU_ACTIVATED true
 #define ALTIMETER_ACTIVATED false
-#define AIRMTRS_ACTIVATED false
+#define AIRMTRS_ACTIVATED true
 
 #define ONEG 16384
 
@@ -87,6 +88,7 @@ void Timer1BInterrupt(void);
 void SolenoidInterrupt(void);
 void BMI160IntHandler(void);
 void BME280IntHandler(void);
+void RadioTimeoutIntHandler(void);
 void TurnOnLED(uint32_t LEDNum);
 void TurnOffLED(uint32_t LEDNum);
 void Menu(char CharReceived);
@@ -112,9 +114,10 @@ void UpdateTrajectory(void);
 typedef struct {
     bool bFlyOrDrive;   // Drive is false, fly is true.
     bool bMode;         // Autonomous is true, manual is false.
-    bool bPayDeployed;  // Whether the payload has been deployed.
-    bool bPayDeploying; // Indicates if the payload is being deployed.
-    bool bGoodRadioData;    // Determines whether the radio data is good or not.
+    bool bPayDeployed;  // True indicates the payload has already been deployed.
+    bool bPayDeploying; // True indicates payload is being deployed.
+    bool bRadioConnected; // True indicates radio is connected.
+    bool bTargetSet;    // True indicates good radio data.
     float fRoll;		// Actual platform roll (degrees).
     float fPitch;		// Actual platform pitch (degrees).
     float fYaw;			// Actual platform yaw (degrees).
@@ -127,6 +130,10 @@ typedef struct {
 	float fAirMtr2Throttle;
 	float fAirMtr3Throttle;
 	float fAirMtr4Throttle;
+#if !APOPHIS
+	float fAirMtr5Throttle;
+	float fAirMtr6Throttle;
+#endif
 } SystemThrottle;
 
 //
@@ -518,7 +525,8 @@ int main(void) {
     sStatus.bFlyOrDrive = false;
     sStatus.bMode = false;
     sStatus.bPayDeployed = false;
-    sStatus.bGoodRadioData = false;
+    sStatus.bRadioConnected = false;
+    sStatus.bTargetSet = false;
 
     //
     // Initialize the throttle of the system.
@@ -556,13 +564,26 @@ int main(void) {
     SysTickPeriodSet(g_SysClockSpeed / 2);
     SysTickEnable();
 
-#if AIRMTRS_ACTIVATED
+#if (AIRMTRS_ACTIVATED)
     //
-    // Activate the motors.
+    // Activate the motors for APOPHIS.
     PWMGenEnable(PWM0_BASE, PWM_GEN_0);
     PWMGenEnable(PWM0_BASE, PWM_GEN_1);
     PWMGenEnable(PWM0_BASE, PWM_GEN_2);
+
+#if !APOPHIS
+    //
+    // Activate the extra motor for the test rig.
+    PWMGenEnable(PWM0_BASE, PWM_GEN_3);
 #endif
+#endif
+
+#if (RADIO_ACTIVATED)
+    //
+    // Activate the radio connection timer.
+    TimerEnable(RADIO_TIMER, TIMER_A);
+#endif
+
 
     //
     // Print menu.
@@ -646,15 +667,16 @@ int main(void) {
         //
         // Check if it is time to send a packet to the ground station.
 #if RADIO_ACTIVATED
-        if (g_SendPacket)
+        if (g_SendPacket && sStatus.bRadioConnected)
             SendPacket();
 #endif
 
 #if AIRMTRS_ACTIVATED
         //
         // Update the trajectory.
-        if (sStatus.bGoodRadioData)
-        	UpdateTrajectory();
+        if (!sStatus.bRadioConnected)
+            sStatus.bMode = true;
+        UpdateTrajectory();
 #endif
 
     }
@@ -769,6 +791,11 @@ void RadioIntHandler(void)
                     ui8Index = 0;
                     g_RadioFlag = true;
                     bValidData = false;
+
+                    //
+                    // Good radio connection. Reset the timer and set the status.
+                    sStatus.bRadioConnected = true;
+                    TimerLoadSet(RADIO_TIMER, TIMER_A, g_SysClockSpeed / 3);
                     break;
                 }
             } else {
@@ -1182,6 +1209,28 @@ void BME280IntHandler(void)
     g_BME280Ready = true;
 }
 
+//*****************************************************************************
+//
+// Interrupt handler for the BME280 sensor unit.
+//
+//*****************************************************************************
+void RadioTimeoutIntHandler(void)
+{
+    uint32_t ui32Status;
+
+    //
+    // Get the interrupt status.
+    ui32Status = TimerIntStatus(RADIO_TIMER, true);
+
+    //
+    // Clear the interrupt.
+    TimerIntClear(RADIO_TIMER, ui32Status);
+
+    //
+    // Set the new status of the platform.
+    sStatus.bRadioConnected = false;
+}
+
 /*
  * Other functions used by main.
  */
@@ -1428,6 +1477,12 @@ void Menu(char charReceived)
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtrThrottle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtrThrottle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtrThrottle);
+
+#if !APOPHIS
+      PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, g_mtrThrottle);
+      PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, g_mtrThrottle);
+#endif
+
             UARTprintf("Throttle Increase: %d\r\n", g_mtrThrottle);
             break;
         }
@@ -1440,15 +1495,27 @@ void Menu(char charReceived)
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtrThrottle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtrThrottle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtrThrottle);
+
+#if !APOPHIS
+      PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, g_mtrThrottle);
+      PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, g_mtrThrottle);
+#endif
+
             UARTprintf("Throttle Decrease: %d\r\n", g_mtrThrottle);
             break;
         }
         case 'X': // kill the throttle.
         {
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE1);
-            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE1);
-            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE1);
-            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE1);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE2);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE3);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE4);
+
+#if !APOPHIS
+      PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, ZEROTHROTTLE5);
+      PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, ZEROTHROTTLE6);
+#endif
+
             g_mtrThrottle = ZEROTHROTTLE1;
             UARTprintf("Throttle Decrease: %d\r\n", g_mtrThrottle);
             break;
@@ -1699,8 +1766,8 @@ void ProcessRadio(void)
         sStatus.bMode = true;
 
         //
-        // Make sure main() knows the data is good.
-        sStatus.bGoodRadioData = true;
+        // The target location has now been set.
+        sStatus.bTargetSet = true;
 
         break;
     }
@@ -1709,10 +1776,6 @@ void ProcessRadio(void)
         //
         // Change the status of the platform.
         sStatus.bMode = false;
-
-        //
-        // Tell main() we are getting good data.
-        sStatus.bGoodRadioData = true;
 
         //
         // Check if we are flying or driving and update the Status.
@@ -1725,8 +1788,7 @@ void ProcessRadio(void)
         //
         // Check if we should deploy the payload.
         if ((!sStatus.bPayDeployed) && (g_sRxPack.sControlPacket.payloadRelease == g_sRxPack.sControlPacket.prConfirm))
-            if ((g_sRxPack.sControlPacket.payloadRelease == 1) && (!sStatus.bPayDeploying))
-            {
+            if ((g_sRxPack.sControlPacket.payloadRelease == 1) && (!sStatus.bPayDeploying)) {
                 sStatus.bPayDeploying = true;
                 ActivateSolenoids();
             }
@@ -1736,12 +1798,12 @@ void ProcessRadio(void)
     case '0':
     {
         //
-        // Change the status of the platform.
+        // Change the mode to autonomous.
         sStatus.bMode = true;
 
         //
         // Receiving bad data. Tell main to ignore it.
-        sStatus.bGoodRadioData = false;
+        sStatus.bTargetSet = false;
 
         break;
     }
@@ -1874,12 +1936,6 @@ void SendPacket(void)
 {
     int n;
 
-    //
-    // Dummy test values.
-    //g_Pack.pack.UTC = 12345.34;
-    //g_Pack.pack.lat = 34.234;
-    //g_Pack.pack.lon = 23.234;
-
     g_Pack.pack.velX = 10;
     g_Pack.pack.velY = 20;
     g_Pack.pack.velZ = 30;
@@ -1895,11 +1951,10 @@ void SendPacket(void)
 
     //
     // Mode of operation.
-    if (g_sRxPack.sControlPacket.flyordrive == g_sRxPack.sControlPacket.fdConfirm)
-    	if (g_sRxPack.sControlPacket.flyordrive == 'F')
-    		g_Pack.pack.movement = 'F'; //g_sRxPack.sControlPacket.flyordrive;
-    	else
+    if (sStatus.bFlyOrDrive)
     		g_Pack.pack.movement = 'F';
+    	else
+    		g_Pack.pack.movement = 'D';
     //
     // Status bits.
     g_Pack.pack.gndmtr1 = true;
@@ -1950,7 +2005,7 @@ void ProcessIMUData(void)
 
     //
     // Check what status returned.
-    if ((status & 0xD0) == (BMI160_ACC_RDY | BMI160_GYR_RDY | BMI160_MAG_RDY))
+    if ((status & 0xE0) == (BMI160_ACC_RDY | BMI160_GYR_RDY | BMI160_MAG_RDY))
     {
         //
         // Then get the data for both the accel, gyro and mag
@@ -2108,6 +2163,10 @@ void UpdateTrajectory(void)
         }
         else
         {
+            float fDesiredRoll = 0.0f;
+            float fDesiredPitch = 0.0f;
+            float fDesiredYawRate = 0.0f;
+
         	UARTprintf("Flying.\r\n");
             //
             // We are flying. Set the parameters sent from the radio.
@@ -2121,6 +2180,12 @@ void UpdateTrajectory(void)
         		sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE2;
         	    sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE3;
         	    sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE4;
+
+#if !APOPHIS
+                sThrottle.fAirMtr5Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE5;
+                sThrottle.fAirMtr6Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE6;
+#endif
+
         	}
         	else
         	{
@@ -2128,62 +2193,99 @@ void UpdateTrajectory(void)
         		sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE2;
         		sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE3;
         		sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE4;
-        		UARTprintf("Throttle: %d\r\n", ui32Throttle);
 
+#if !APOPHIS
+                sThrottle.fAirMtr5Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE5;
+                sThrottle.fAirMtr6Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE6;
+#endif
+
+#if DEBUG
+        		UARTprintf("Throttle: %d\r\n", ui32Throttle);
         		//
-        		// Get the roll, pitch, yaw.
+        		// Get the roll, pitch, yaw for printing to the console.
         		int32_t ui32Roll = (int32_t)(g_sRxPack.sControlPacket.roll * 100);
         		int32_t ui32Pitch = (int32_t)(g_sRxPack.sControlPacket.pitch * 100);
         		int32_t ui32Yaw = (int32_t)(g_sRxPack.sControlPacket.yaw);
+                UARTprintf("Roll: %d\r\nPitch: %d\r\nYaw: %d\r\n", ui32Roll, ui32Pitch, ui32Yaw);
+#endif
 
-        		UARTprintf("Roll: %d\r\nPitch: %d\r\nYaw: %d\r\n", ui32Roll, ui32Pitch, ui32Yaw);
+                //
+                // Calculate the roll, pitch and yaw.
+        		fDesiredRoll = g_sRxPack.sControlPacket.roll * 25.0f;
+        		fDesiredPitch = g_sRxPack.sControlPacket.pitch * 25.0f;
+        		fDesiredYawRate = (g_sRxPack.sControlPacket.yaw / 255.0f) * 100.0f;
 
         		//
         		// Check if the pitch error is less than 0.5 or -0.5.
-        		if ((sStatus.fPitch - g_sRxPack.sControlPacket.pitch > 0.5f) || (sStatus.fPitch - g_sRxPack.sControlPacket.pitch < -0.5f))
+        		if (((sStatus.fPitch - fDesiredPitch) > 0.5f) || ((sStatus.fPitch - fDesiredPitch) < -0.5f))
         		{
         			//
         			// Check the pitch.
         			// Pitch is less than desired and negative.
-        			if ((sStatus.fPitch < g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch < 0))
+        			if ((sStatus.fPitch < fDesiredPitch) && (sStatus.fPitch < 0))
         			{
+#if APOPHIS
         				//
         				// "Pull Up", increase front motor throttle and decrease back motor throttle.
         				sThrottle.fAirMtr1Throttle += 500;
         				sThrottle.fAirMtr3Throttle -= 500;
-
+#else
+        				sThrottle.fAirMtr1Throttle += 500;
+        				sThrottle.fAirMtr3Throttle -= 500;
+                        sThrottle.fAirMtr4Throttle -= 500;
+                        sThrottle.fAirMtr6Throttle += 500;
+#endif
         				UARTprintf("Neg Pitch and Pull Up\r\n");
         			}
         			//
         			// Pitch is greater than desired and negative.
-        			else if ((sStatus.fPitch > g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch < 0))
+        			else if ((sStatus.fPitch > fDesiredPitch) && (sStatus.fPitch < 0))
         			{
+#if APOPHIS
         				//
         				// "Pull Down", decrease front motor throttle and increase back motor throttle.
         				sThrottle.fAirMtr1Throttle -= 500;
         				sThrottle.fAirMtr3Throttle += 500;
-
+#else
+                        sThrottle.fAirMtr1Throttle -= 500;
+                        sThrottle.fAirMtr3Throttle += 500;
+                        sThrottle.fAirMtr4Throttle += 500;
+                        sThrottle.fAirMtr6Throttle -= 500;
+#endif
         				UARTprintf("Neg Pitch and Pull Down\r\n");
         			}
         			//
         			// Pitch is less than desired and positive.
-        			else if ((sStatus.fPitch < g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch > 0))
+        			else if ((sStatus.fPitch < fDesiredPitch) && (sStatus.fPitch > 0))
         			{
+#if APOPHIS
         				//
         				// "Pull Up", increase front motor throttle and decrease back motor throttle.
         				sThrottle.fAirMtr1Throttle += 500;
         				sThrottle.fAirMtr3Throttle -= 500;
-
+#else
+                        sThrottle.fAirMtr1Throttle += 500;
+                        sThrottle.fAirMtr3Throttle -= 500;
+                        sThrottle.fAirMtr4Throttle -= 500;
+                        sThrottle.fAirMtr6Throttle += 500;
+#endif
         				UARTprintf("Pos Pitch and Pull Up\r\n");
         			}
         			//
         			// Pitch is greater than desired and positive.
-        			else if ((sStatus.fPitch > g_sRxPack.sControlPacket.pitch) && (sStatus.fPitch > 0))
+        			else if ((sStatus.fPitch > fDesiredPitch) && (sStatus.fPitch > 0))
         			{
+#if APOPHIS
         				//
         				// "Pull Down", decrease front motor throttle and increase back motor throttle.
         				sThrottle.fAirMtr1Throttle -= 500;
         				sThrottle.fAirMtr3Throttle += 500;
+#else
+                        sThrottle.fAirMtr1Throttle -= 500;
+                        sThrottle.fAirMtr3Throttle += 500;
+                        sThrottle.fAirMtr4Throttle += 500;
+                        sThrottle.fAirMtr6Throttle -= 500;
+#endif
 
         				UARTprintf("Pos Pitch and Pull Down\r\n");
         			}
@@ -2191,51 +2293,67 @@ void UpdateTrajectory(void)
 
         		//
         		// Check if roll error is greater than 0.5 degrees.
-        		if ((sStatus.fRoll - g_sRxPack.sControlPacket.roll > 0.5f) || (sStatus.fRoll - g_sRxPack.sControlPacket.roll < -0.5f))
+        		if ((sStatus.fRoll - fDesiredRoll > 0.5f) || (sStatus.fRoll - fDesiredRoll < -0.5f))
         		{
         			//
         			// Check the roll.
         			// Roll is less than desired and negative.
-        			if ((sStatus.fRoll < g_sRxPack.sControlPacket.roll) && (sStatus.fRoll < 0))
+        			if ((sStatus.fRoll < fDesiredRoll) && (sStatus.fRoll < 0))
         			{
+#if APOPHIS
         				//
         				// "Roll right", increase left motor throttle and decrease right motor throttle.
         				sThrottle.fAirMtr2Throttle -= 500;
         				sThrottle.fAirMtr4Throttle += 500;
-
+#else
+                        sThrottle.fAirMtr2Throttle -= 500;
+                        sThrottle.fAirMtr5Throttle += 500;
+#endif
         				UARTprintf("Neg Roll and Roll Right\r\n");
         			}
         			//
         			// Roll is greater than desired and negative.
-        			else if ((sStatus.fRoll > g_sRxPack.sControlPacket.roll) && (sStatus.fRoll < 0))
+        			else if ((sStatus.fRoll > fDesiredRoll) && (sStatus.fRoll < 0))
         			{
+#if APOPHIS
         				//
         				// "Roll Left", increase right motor throttle and decrease left motor throttle.
         				sThrottle.fAirMtr2Throttle += 500;
         				sThrottle.fAirMtr4Throttle -= 500;
-
+#else
+                        sThrottle.fAirMtr2Throttle += 500;
+                        sThrottle.fAirMtr5Throttle -= 500;
+#endif
         				UARTprintf("Neg Roll and Roll Left\r\n");
         			}
         			//
         			// Roll is less than desired and positive.
-        			else if ((sStatus.fRoll < g_sRxPack.sControlPacket.roll) && (sStatus.fRoll > 0))
+        			else if ((sStatus.fRoll < fDesiredRoll) && (sStatus.fRoll > 0))
         			{
+#if APOPHIS
         				//
         				// "Roll Right", increase left motor throttle and decrease right motor throttle.
         				sThrottle.fAirMtr2Throttle -= 500;
         				sThrottle.fAirMtr4Throttle += 500;
-
+#else
+                        sThrottle.fAirMtr2Throttle -= 500;
+                        sThrottle.fAirMtr5Throttle += 500;
+#endif
         				UARTprintf("Pos Roll and Roll Right\r\n");
         			}
         			//
         			// Roll is greater than desired and positive.
-        			else if ((sStatus.fRoll > g_sRxPack.sControlPacket.roll) && (sStatus.fRoll > 0))
+        			else if ((sStatus.fRoll > fDesiredRoll) && (sStatus.fRoll > 0))
         			{
+#if APOPHIS
         				//
         				// "Roll Left", decrease left motor throttle and increase right motor throttle.
         				sThrottle.fAirMtr2Throttle += 500;
         				sThrottle.fAirMtr4Throttle -= 500;
-
+#else
+                        sThrottle.fAirMtr2Throttle += 500;
+                        sThrottle.fAirMtr5Throttle -= 500;
+#endif
         				UARTprintf("Pos Roll and Roll Left\r\n");
         			}
         		}
@@ -2249,6 +2367,10 @@ void UpdateTrajectory(void)
 			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.fAirMtr2Throttle);
 			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.fAirMtr3Throttle);
 			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.fAirMtr4Throttle);
+#if !APOPHIS
+			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, sThrottle.fAirMtr5Throttle);
+			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, sThrottle.fAirMtr6Throttle);
+#endif
         }
 
     }
@@ -2256,7 +2378,7 @@ void UpdateTrajectory(void)
     {
         //
         // Check if radio is sending good data.
-        if (sStatus.bGoodRadioData)
+        if (sStatus.bTargetSet)
         {
             //
             // Radio data is good, calculate a trajectory.

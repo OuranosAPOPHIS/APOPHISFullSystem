@@ -124,7 +124,18 @@
 #define GNDMTR2_UART UART7_BASE
 #define GNDMTR2_INT INT_UART7
 
-
+/*
+ * Radio Timer Defines
+ * Timer 5 - Timer A will be used
+ * to detect radio communication loss.
+ * It will be run at 3 Hz, if it times out,
+ * this will indicate that there is no radio
+ * signal being received. It will be the radio
+ * interrupt handler's responsibility to
+ * reset the timer during the interrupt call.
+ */
+#define RADIO_TIMER TIMER5_BASE
+#define RADIO_TIMER_INT INT_TIMER5A
 
 /*
  *  ADC Peripheral Defines for Solar Panels
@@ -277,19 +288,30 @@
 #define PWM_GPIO_PERIPH SYSCTL_PERIPH_GPIOG
 #define PWM_GPIO_PORT1 GPIO_PORTF_BASE
 #define PWM_GPIO_PORT2 GPIO_PORTG_BASE
+
 #define PWM_MTR_1 GPIO_PIN_1
 #define PWM_MTR_2 GPIO_PIN_2
 #define PWM_MTR_3 GPIO_PIN_3
 #define PWM_MTR_4 GPIO_PIN_0
+#define PWM_MTR_5 GPIO_PIN_1
+#define PWM_MTR_6 GPIO_PIN_4
+
 #define MOTOR_OUT_1 PWM_OUT_1
 #define MOTOR_OUT_2 PWM_OUT_2
 #define MOTOR_OUT_3 PWM_OUT_3
 #define MOTOR_OUT_4 PWM_OUT_4
+#define MOTOR_OUT_5 PWM_OUT_5
+#define MOTOR_OUT_6 PWM_OUT_6
+
 #define ZEROTHROTTLE1 18500
 #define ZEROTHROTTLE2 18500
 #define ZEROTHROTTLE3 18500
 #define ZEROTHROTTLE4 18500
-#define PWMINITIALZE 16500
+#define ZEROTHROTTLE5 18500
+#define ZEROTHROTTLE6 18500
+
+#define PWMINITIALZE 18500
+
 #define PWM_FREQUENCY 50
 
 #endif /* APOPHIS_PIN_MAP_H_ */

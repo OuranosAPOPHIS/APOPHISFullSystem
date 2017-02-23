@@ -39,6 +39,8 @@
 #include "bme280.h"
 #include "i2c_driver.h"
 
+#define APOPHIS false
+
 //*****************************************************************************
 //
 // External Function Declarations for IntRegister() functions.
@@ -60,6 +62,7 @@ extern void Timer1BInterrupt(void);
 extern void SolenoidInterrupt(void);
 extern void BMI160IntHandler(void);
 extern void BME280IntHandler(void);
+extern void RadioTimeoutIntHandler(void);
 
 /*
  * LED Initialization function.
@@ -176,6 +179,23 @@ void InitRadio(uint32_t SysClockSpeed)
     IntEnable(RADIO_INT);
     UARTIntEnable(RADIO_UART, UART_INT_RX | UART_INT_RT);
     UARTIntRegister(RADIO_UART, RadioIntHandler);
+
+    //
+    // Set up a timer, to detect when radio signal is lost.
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER5);
+
+    //
+    // Configure the timer to timeout after 333 milliseconds (3Hz)
+    // and to be periodic.
+    TimerConfigure(RADIO_TIMER, TIMER_CFG_PERIODIC);
+    TimerLoadSet(RADIO_TIMER, TIMER_A, SysClockSpeed / 3);
+
+    //
+    // Configure the interrupts for the timer.
+    TimerIntClear(RADIO_TIMER, TIMER_TIMA_TIMEOUT);
+    TimerIntEnable(RADIO_TIMER, TIMER_TIMA_TIMEOUT);
+    IntEnable(RADIO_TIMER_INT);
+    TimerIntRegister(RADIO_TIMER, TIMER_A, RadioTimeoutIntHandler);
 
     //
     // Initialization complete. Print to console.
@@ -680,6 +700,18 @@ void InitAirMtrs(uint32_t sysClockSpeed)
     GPIOPinTypePWM(PWM_GPIO_PORT1, PWM_MTR_1 | PWM_MTR_2 | PWM_MTR_3);
     GPIOPinTypePWM(PWM_GPIO_PORT2, PWM_MTR_4);
 
+#if !APOPHIS
+    //
+    // Set up 2 extra motors.
+    SysCtlPeripheralEnable(GPIO_PORTK_BASE);
+
+    GPIOPinConfigure(GPIO_PG1_M0PWM5);
+    GPIOPinConfigure(GPIO_PK4_M0PWM6);
+
+    GPIOPinTypePWM(GPIO_PORTG_BASE, PWM_MTR_5);
+    GPIOPinTypePWM(GPIO_PORTK_BASE, PWM_MTR_6);
+#endif
+
     //
     // Frequency of PWM.
     speed = (sysClockSpeed / PWM_FREQUENCY) - 1;
@@ -694,17 +726,35 @@ void InitAirMtrs(uint32_t sysClockSpeed)
     PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, speed);
     PWMGenPeriodSet(PWM0_BASE, PWM_GEN_2, speed);
 
+#if !APOPHIS
+    //
+    // Set up the generator for the 6th motor.
+    PWMGenConfigure(PWM0_BASE, PWM_GEN_3, PWM_GEN_MODE_DOWN);
+    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_3, speed);
+#endif
+
     //
     // Initialize pulse to 50%
     PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE1);
-    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE1);
-    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE1);
-    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE1);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE2);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE3);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE4);
+
+#if !APOPHIS
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, ZEROTHROTTLE5);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, ZEROTHROTTLE6);
+
+    PWMOutputState(PWM0_BASE, PWM_OUT_1_BIT | PWM_OUT_2_BIT | PWM_OUT_3_BIT |
+                   PWM_OUT_4_BIT | PWM_OUT_5_BIT | PWM_OUT_6_BIT, true);
+
+    UARTprintf("Motors initialized for test rig.\r\nDone!\n\r");
+#else
 
     //
     // Set the output PWM modules.
     PWMOutputState(PWM0_BASE, PWM_OUT_1_BIT | PWM_OUT_2_BIT | PWM_OUT_3_BIT |
                    PWM_OUT_4_BIT, true);
 
-    UARTprintf("Done!\n\r");
+    UARTprintf("Motors initialized for APOPHIS.\r\nDone!\n\r");
+#endif
 }
