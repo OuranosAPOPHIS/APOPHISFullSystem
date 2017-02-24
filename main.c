@@ -121,6 +121,12 @@ typedef struct {
     float fRoll;		// Actual platform roll (degrees).
     float fPitch;		// Actual platform pitch (degrees).
     float fYaw;			// Actual platform yaw (degrees).
+    float fCurrentLat;		// Current Latitide.
+    float fCurrentLong;		// Current longitude.
+    float fTargetLat;		// Target latitude.
+    float fTargetLong;		// Target longiutde.
+    float fTempTargetLat;	// Temporary target latitude for before the location is set by the GS.
+    float fTempTargetLong; 	// Temporary target longitude for before the location is set by the GS.
 } SystemStatus;
 
 typedef struct {
@@ -2389,7 +2395,8 @@ void UpdateTrajectory(void)
         else
         {
             //
-            // Radio data is bad, do nothing.
+            // Radio data is bad. Set the current location as the target location.
+	    sStatus.
 
             //
             // TODO: Add some logic, so that if we lose radio contact, we
