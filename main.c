@@ -2153,22 +2153,20 @@ void UpdateTrajectory(void)
         //
         // Operating in manual mode.
         // Check if we are flying or driving.
-        if (!sStatus.bFlyOrDrive)
-        {
+        if (!sStatus.bFlyOrDrive) {
         	UARTprintf("Driving.\r\n");
             //
             // We are driving. Set the parameters sent from the radio.
-        	// Get the wheel throttles.
-        	int32_t ui32RWThrottle = (int32_t)(g_sRxPack.sControlPacket.throttle * 100);
-        	int32_t ui32LWThrottle = (int32_t)(g_sRxPack.sControlPacket.throttle2 * 100);
+        	// Get the wheel throttles. They will be sent as percentages from 0 to 100.
+        	int32_t ui32RWThrottle = (int32_t)(g_sRxPack.sControlPacket.throttle);
+        	int32_t ui32LWThrottle = (int32_t)(g_sRxPack.sControlPacket.throttle2);
 
         	UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", ui32RWThrottle, ui32LWThrottle);
 
             //
             // TODO: Ground travel logic.
         }
-        else
-        {
+        else {
             float fDesiredRoll = 0.0f;
             float fDesiredPitch = 0.0f;
             float fDesiredYawRate = 0.0f;
@@ -2177,49 +2175,49 @@ void UpdateTrajectory(void)
             //
             // We are flying. Set the parameters sent from the radio.
         	// Get the throttle.
-        	uint32_t ui32Throttle = (int32_t)(g_sRxPack.sControlPacket.throttle * 100);
+        	uint32_t ui32Throttle = (int32_t)(g_sRxPack.sControlPacket.throttle);
 
         	if(g_sRxPack.sControlPacket.throttle <= 0)
         	{
         		ui32Throttle = 0;
-        		sThrottle.fAirMtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE1;
-        		sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE2;
-        	    sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE3;
-        	    sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE4;
+        		sThrottle.fAirMtr1Throttle = ui32Throttle + ZEROTHROTTLE1;
+        		sThrottle.fAirMtr2Throttle = ui32Throttle + ZEROTHROTTLE2;
+        	    sThrottle.fAirMtr3Throttle = ui32Throttle + ZEROTHROTTLE3;
+        	    sThrottle.fAirMtr4Throttle = ui32Throttle + ZEROTHROTTLE4;
 
 #if !APOPHIS
-                sThrottle.fAirMtr5Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE5;
-                sThrottle.fAirMtr6Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE6;
+                sThrottle.fAirMtr5Throttle = ui32Throttle + ZEROTHROTTLE5;
+                sThrottle.fAirMtr6Throttle = ui32Throttle + ZEROTHROTTLE6;
 #endif
 
         	}
         	else
         	{
-        		sThrottle.fAirMtr1Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE1;
-        		sThrottle.fAirMtr2Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE2;
-        		sThrottle.fAirMtr3Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE3;
-        		sThrottle.fAirMtr4Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE4;
+        		sThrottle.fAirMtr1Throttle = ui32Throttle + ZEROTHROTTLE1;
+        		sThrottle.fAirMtr2Throttle = ui32Throttle + ZEROTHROTTLE2;
+        		sThrottle.fAirMtr3Throttle = ui32Throttle + ZEROTHROTTLE3;
+        		sThrottle.fAirMtr4Throttle = ui32Throttle + ZEROTHROTTLE4;
 
 #if !APOPHIS
-                sThrottle.fAirMtr5Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE5;
-                sThrottle.fAirMtr6Throttle = (ui32Throttle) * 100 + ZEROTHROTTLE6;
+                sThrottle.fAirMtr5Throttle = ui32Throttle + ZEROTHROTTLE5;
+                sThrottle.fAirMtr6Throttle = ui32Throttle + ZEROTHROTTLE6;
 #endif
 
 #if DEBUG
         		UARTprintf("Throttle: %d\r\n", ui32Throttle);
         		//
         		// Get the roll, pitch, yaw for printing to the console.
-        		int32_t ui32Roll = (int32_t)(g_sRxPack.sControlPacket.roll * 100);
-        		int32_t ui32Pitch = (int32_t)(g_sRxPack.sControlPacket.pitch * 100);
+        		int32_t ui32Roll = (int32_t)(g_sRxPack.sControlPacket.roll);
+        		int32_t ui32Pitch = (int32_t)(g_sRxPack.sControlPacket.pitch);
         		int32_t ui32Yaw = (int32_t)(g_sRxPack.sControlPacket.yaw);
                 UARTprintf("Roll: %d\r\nPitch: %d\r\nYaw: %d\r\n", ui32Roll, ui32Pitch, ui32Yaw);
 #endif
 
                 //
                 // Calculate the roll, pitch and yaw.
-        		fDesiredRoll = g_sRxPack.sControlPacket.roll * 25.0f;
-        		fDesiredPitch = g_sRxPack.sControlPacket.pitch * 25.0f;
-        		fDesiredYawRate = (g_sRxPack.sControlPacket.yaw / 255.0f) * 100.0f;
+        		fDesiredRoll = g_sRxPack.sControlPacket.roll / 100.0f * 25.0f;
+        		fDesiredPitch = g_sRxPack.sControlPacket.pitch / 100.0f * 25.0f;
+        		fDesiredYawRate = (g_sRxPack.sControlPacket.yaw);
 
         		//
         		// Check if the pitch error is less than 0.5 or -0.5.
