@@ -199,6 +199,10 @@ bool g_ADCFlag = false;
 // Variable to indicate when Radio data is available.
 bool g_RadioFlag = false;
 
+//
+// Flag to indicate when to print for the trajectory information.
+bool g_PrintFlag = false;
+
 /*
  * GPS globals.
  */
@@ -734,6 +738,10 @@ void SysTickIntHandler(void)
     //
     // Trigger printing accel and gyro data to PC terminal.
     g_loopCount = true;
+
+    //
+    // Trigger printing of the trajectory information.
+    g_PrintFlag = true;
 }
 
 //*****************************************************************************
@@ -2154,14 +2162,17 @@ void UpdateTrajectory(void)
         // Operating in manual mode.
         // Check if we are flying or driving.
         if (!sStatus.bFlyOrDrive) {
-        	UARTprintf("Driving.\r\n");
             //
             // We are driving. Set the parameters sent from the radio.
         	// Get the wheel throttles. They will be sent as percentages from 0 to 100.
         	int32_t ui32RWThrottle = (int32_t)(g_sRxPack.sControlPacket.throttle);
         	int32_t ui32LWThrottle = (int32_t)(g_sRxPack.sControlPacket.throttle2);
 
-        	UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", ui32RWThrottle, ui32LWThrottle);
+        	if (g_PrintFlag) {
+            	UARTprintf("Driving.\r\n");
+            	UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", ui32RWThrottle, ui32LWThrottle);
+        	}
+
 
             //
             // TODO: Ground travel logic.
@@ -2171,7 +2182,10 @@ void UpdateTrajectory(void)
             float fDesiredPitch = 0.0f;
             float fDesiredYawRate = 0.0f;
 
-        	UARTprintf("Flying.\r\n");
+        	if (g_PrintFlag) {
+        		UARTprintf("Flying.\r\n");
+        	}
+
             //
             // We are flying. Set the parameters sent from the radio.
         	// Get the throttle.
@@ -2204,13 +2218,16 @@ void UpdateTrajectory(void)
 #endif
 
 #if DEBUG
-        		UARTprintf("Throttle: %d\r\n", ui32Throttle);
         		//
         		// Get the roll, pitch, yaw for printing to the console.
-        		int32_t ui32Roll = (int32_t)(g_sRxPack.sControlPacket.roll);
-        		int32_t ui32Pitch = (int32_t)(g_sRxPack.sControlPacket.pitch);
+        		int32_t ui32Roll = (int32_t)(g_sRxPack.sControlPacket.roll) * 25 / 100;
+        		int32_t ui32Pitch = (int32_t)(g_sRxPack.sControlPacket.pitch * 25 / 100);
         		int32_t ui32Yaw = (int32_t)(g_sRxPack.sControlPacket.yaw);
-                UARTprintf("Roll: %d\r\nPitch: %d\r\nYaw: %d\r\n", ui32Roll, ui32Pitch, ui32Yaw);
+
+        		if (g_PrintFlag) {
+					UARTprintf("Throttle: %d\r\n", ui32Throttle);
+					UARTprintf("Desired Roll: %d\r\nDesired Pitch: %d\r\nYaw: %d\r\n", ui32Roll, ui32Pitch, ui32Yaw);
+        		}
 #endif
 
                 //
@@ -2239,7 +2256,9 @@ void UpdateTrajectory(void)
                         sThrottle.fAirMtr4Throttle -= 500;
                         sThrottle.fAirMtr6Throttle += 500;
 #endif
-        				UARTprintf("Neg Pitch and Pull Up\r\n");
+                		if (g_PrintFlag) {
+                			UARTprintf("Neg Pitch and Pull Up\r\n");
+                		}
         			}
         			//
         			// Pitch is greater than desired and negative.
@@ -2256,7 +2275,9 @@ void UpdateTrajectory(void)
                         sThrottle.fAirMtr4Throttle += 500;
                         sThrottle.fAirMtr6Throttle -= 500;
 #endif
-        				UARTprintf("Neg Pitch and Pull Down\r\n");
+                		if (g_PrintFlag) {
+                			UARTprintf("Neg Pitch and Pull Down\r\n");
+                		}
         			}
         			//
         			// Pitch is less than desired and positive.
@@ -2273,7 +2294,9 @@ void UpdateTrajectory(void)
                         sThrottle.fAirMtr4Throttle -= 500;
                         sThrottle.fAirMtr6Throttle += 500;
 #endif
-        				UARTprintf("Pos Pitch and Pull Up\r\n");
+                		if (g_PrintFlag) {
+                			UARTprintf("Pos Pitch and Pull Up\r\n");
+                		}
         			}
         			//
         			// Pitch is greater than desired and positive.
@@ -2290,8 +2313,9 @@ void UpdateTrajectory(void)
                         sThrottle.fAirMtr4Throttle += 500;
                         sThrottle.fAirMtr6Throttle -= 500;
 #endif
-
-        				UARTprintf("Pos Pitch and Pull Down\r\n");
+                		if (g_PrintFlag) {
+                			UARTprintf("Pos Pitch and Pull Down\r\n");
+                		}
         			}
         		}
 
@@ -2313,7 +2337,9 @@ void UpdateTrajectory(void)
                         sThrottle.fAirMtr2Throttle -= 500;
                         sThrottle.fAirMtr5Throttle += 500;
 #endif
-        				UARTprintf("Neg Roll and Roll Right\r\n");
+                		if (g_PrintFlag) {
+                			UARTprintf("Neg Roll and Roll Right\r\n");
+                		}
         			}
         			//
         			// Roll is greater than desired and negative.
@@ -2328,7 +2354,9 @@ void UpdateTrajectory(void)
                         sThrottle.fAirMtr2Throttle += 500;
                         sThrottle.fAirMtr5Throttle -= 500;
 #endif
-        				UARTprintf("Neg Roll and Roll Left\r\n");
+                		if (g_PrintFlag) {
+                			UARTprintf("Neg Roll and Roll Left\r\n");
+                		}
         			}
         			//
         			// Roll is less than desired and positive.
@@ -2343,8 +2371,11 @@ void UpdateTrajectory(void)
                         sThrottle.fAirMtr2Throttle -= 500;
                         sThrottle.fAirMtr5Throttle += 500;
 #endif
-        				UARTprintf("Pos Roll and Roll Right\r\n");
+                		if (g_PrintFlag) {
+                			UARTprintf("Pos Roll and Roll Right\r\n");
+                		}
         			}
+
         			//
         			// Roll is greater than desired and positive.
         			else if ((sStatus.fRoll > fDesiredRoll) && (sStatus.fRoll > 0))
@@ -2358,12 +2389,15 @@ void UpdateTrajectory(void)
                         sThrottle.fAirMtr2Throttle += 500;
                         sThrottle.fAirMtr5Throttle -= 500;
 #endif
-        				UARTprintf("Pos Roll and Roll Left\r\n");
+                		if (g_PrintFlag) {
+                			UARTprintf("Pos Roll and Roll Left\r\n");
+                		}
         			}
         		}
         	}
         	//
         	// TODO: What about yaw?
+
 
         	//
         	// Set the new throttles for the motors.
@@ -2394,12 +2428,18 @@ void UpdateTrajectory(void)
         {
             //
             // Radio data is bad. Set the current location as the target location.
-	    sStatus.
+        	sStatus.fTempTargetLat = sStatus.fCurrentLat;
+        	sStatus.fTempTargetLong = sStatus.fCurrentLong;
 
             //
             // TODO: Add some logic, so that if we lose radio contact, we
             // don't necessarily crash...
         }
     }
+
+
+	//
+	// Reset printing loop count for debugging.
+    g_PrintFlag = false;
 
 }
