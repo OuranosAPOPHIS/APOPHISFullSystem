@@ -41,8 +41,8 @@
 // gyro. In supsend mode, the device cannot receive burst writes.
 //
 //*****************************************************************************
-void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
-                uint8_t GyroRate, uint8_t GyroAccuracy, uint8_t MagRate, uint8_t *offsetValues)
+void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uint8_t GyroRate,
+                uint8_t GyroAccuracy, uint8_t MagRate, uint8_t *offsetValues, uint32_t sysClockSpeed)
 {
     uint8_t txBuffer[2];
 #if DEBUG
@@ -60,7 +60,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 
     //
     // Wait 3.8 ms at least, before booting the accel after the reset.
-    SysCtlDelay(16000 * 10);
+    SysCtlDelay(sysClockSpeed / 1000 * 10);
 
     //
     // Next, boot up the accel in normal mode.
@@ -70,7 +70,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 
     //
     // 450us delay is required after each send in suspend mode.
-    SysCtlDelay(8000);
+    SysCtlDelay(sysClockSpeed / 1000 / 2);
 
     //
     // Next, boot up the gyro in normal mode.
@@ -80,7 +80,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 
     //
     // 80 ms delay after boot up of gyro
-    SysCtlDelay(16000 * 100);
+    SysCtlDelay(sysClockSpeed / 1000 * 100);
 
     //
     // Next, boot up mag in normal mode.
@@ -90,7 +90,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 
     //
     // 0.5 ms delay after boot up of mag
-    SysCtlDelay(16000 * 2);
+    SysCtlDelay(sysClockSpeed / 1000 * 2);
 
 #if DEBUG
     //
@@ -169,16 +169,44 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
 #endif
 
     //
-    // Set up the mag interface.
+    // Initialize the magnetometer.
+    // Set up the mag address.
     txBuffer[0] = BMI160_MAG_IF;
     txBuffer[1] = BMI160_MAG_ADDRESS << 1;
-
-    //
-    // Write the setting to the device.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+    //
+    // Set up direct writes.
+    txBuffer[0] = BMI160_MAG_IF + 0x01;
+    txBuffer[1] = BMI160_MAG_DIRECT_ENABLE;
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    //
+    // Reset the magnetometer.
+    txBuffer[0] = BMI160_MAG_IF + 0x04;
+    txBuffer[1] = BMM150_SOFT_RESET | BMM150_SLEEP_STARTUP;
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    txBuffer[0] = BMI160_MAG_IF + 0x03;
+    txBuffer[1] = BMM150_RESET_REG;
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    //
+    // Configure the magnetometer for 25 Hz operation and Normal mode.
+    txBuffer[0] = BMI160_MAG_IF + 0x04;
+    txBuffer[1] = BMM150_DATA_RATE_25_HZ | BMM150_NORMAL_MODE;
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    txBuffer[0] = BMI160_MAG_IF + 0x03;
+    txBuffer[1] = BMM150_CONFIG_REG;
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    //
+    // Set up the interface with the magnetometer.
     txBuffer[0] = BMI160_MAG_IF + 0x01;
     txBuffer[1] = BMI160_MAG_BURST_READ;
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    txBuffer[0] = BMI160_MAG_IF + 0x02;
+    txBuffer[1] = BMM150_DATA_REG;
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
 #if DEBUG

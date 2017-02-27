@@ -273,10 +273,7 @@ float g_fGyroData[3];
 
 //
 // Used as global storage for the raw mag data.
-// The first three elements are the x, y, z values.
-// The fourth element is the Rhall vlaue.
-int16_t g_magDataRaw[4];
-
+float g_fMagData[3];
 //
 // Used to indicate if the IMU is working, by blinking LED 1.
 bool g_LED1On = false;
@@ -525,7 +522,7 @@ int main(void) {
 
     //
     // Initialize the DCM.
-    CompDCMInit(&g_sCompDCMInst, 1.0 / 25.0f, 0.4f, 0.2f, 0.4f);
+    CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.3f, 0.4f, 0.3f);
     g_bDCMStarted = false;
 
 #endif
@@ -1243,6 +1240,73 @@ void RadioTimeoutIntHandler(void)
     //
     // Set the new status of the platform.
     sStatus.bRadioConnected = false;
+}
+
+//*****************************************************************************
+//
+// Updates the DCM at a consistent rate of 25Hz.
+//
+//*****************************************************************************
+void DCMUpdateTimer(void)
+{
+    uint32_t ui32Status;
+
+    //
+    // Get the interrupt status.
+    ui32Status = TimerIntStatus(DCM_TIMER, true);
+
+    //
+    // Clear the interrupt.
+    TimerIntClear(DCM_TIMER, ui32Status);
+
+    //
+    // Check if this is the first time.
+    if (g_bDCMStarted == 0)
+    {
+        //
+        // Start the DCM.
+        CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX, g_Pack.pack.accelY,
+                           g_Pack.pack.accelZ);
+
+        CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1], g_fGyroData[2]);
+
+        CompDCMMagnetoUpdate(&g_sCompDCMInst, g_fMagData[0], g_fMagData[1], g_fMagData[2]);
+
+        CompDCMStart(&g_sCompDCMInst);
+
+        g_bDCMStarted = true;
+    }
+    else
+    {
+        //
+        // DCM is already started, just update it.
+        CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX, g_Pack.pack.accelY,
+                           g_Pack.pack.accelZ);
+
+        CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1], g_fGyroData[2]);
+
+        CompDCMMagnetoUpdate(&g_sCompDCMInst, g_fMagData[0], g_fMagData[1], g_fMagData[2]);
+
+        CompDCMUpdate(&g_sCompDCMInst);
+    }
+
+    //
+    // Get the Euler angles.
+    CompDCMComputeEulers(&g_sCompDCMInst, &sStatus.fRoll, &sStatus.fPitch,
+                         &sStatus.fYaw);
+
+    //
+    // Flip the roll axis. Positive is roll right.
+    sStatus.fRoll *= -1;
+
+    //
+    // Convert Eulers to degrees. 180/PI = 57.29...
+    // Convert Yaw to 0 to 360 to approximate compass headings.
+    sStatus.fRoll *= 57.295779513082320876798154814105f;
+    sStatus.fPitch *= 57.295779513082320876798154814105f;
+    sStatus.fYaw *= 57.295779513082320876798154814105f;
+    if(sStatus.fYaw < 0)
+        sStatus.fYaw += 360.0f;
 }
 
 /*
@@ -2008,7 +2072,6 @@ void ProcessIMUData(void)
     uint8_t IMUData[20]; // raw accel and gyro data
     int16_t accelIntData[3];
     uint8_t ui8MagData[4];
-    float fMagData[4];
     int16_t *p_accelX = &accelIntData[0];
     int16_t *p_accelY = &accelIntData[1];
     int16_t *p_accelZ = &accelIntData[2];
@@ -2034,9 +2097,9 @@ void ProcessIMUData(void)
 
         //
         // Convert to float for DCM.
-        fMagData[0] = ui8MagData[0] / g_fMagLSB;
-        fMagData[1] = ui8MagData[1] / g_fMagLSB;
-        fMagData[2] = ui8MagData[2] / g_fMagLSB;
+        g_fMagData[0] = ui8MagData[0] / g_fMagLSB;
+        g_fMagData[1] = ui8MagData[1] / g_fMagLSB;
+        g_fMagData[2] = ui8MagData[2] / g_fMagLSB;
 
 
         //
@@ -2064,54 +2127,6 @@ void ProcessIMUData(void)
         g_Pack.pack.accelZ = ((float)accelIntData[2]) / g_accelLSBg;
 
         //
-        // Check if this is the first time.
-        if (g_bDCMStarted == 0)
-        {
-            //
-            // Start the DCM.
-            CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX, g_Pack.pack.accelY,
-            		g_Pack.pack.accelZ);
-            CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1], g_fGyroData[2]);
-
-            CompDCMMagnetoUpdate(&g_sCompDCMInst, fMagData[0], fMagData[1], fMagData[2]);
-
-            CompDCMStart(&g_sCompDCMInst);
-        }
-        else
-        {
-        	//
-        	// DCM is already started, just update it.
-        	CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX, g_Pack.pack.accelY,
-        	            		g_Pack.pack.accelZ);
-			CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1], g_fGyroData[2]);
-
-            CompDCMMagnetoUpdate(&g_sCompDCMInst, ui8MagData[0], ui8MagData[1], ui8MagData[2]);
-
-            CompDCMUpdate(&g_sCompDCMInst);
-        }
-
-        //
-        // Get the Euler angles.
-        CompDCMComputeEulers(&g_sCompDCMInst, &sStatus.fRoll, &sStatus.fPitch,
-                                   &sStatus.fYaw);
-
-        //
-        // Flip the roll axis. Positive is roll right.
-        sStatus.fRoll *= -1;
-
-
-        //
-		// Convert Eulers to degrees. 180/PI = 57.29...
-		// Convert Yaw to 0 to 360 to approximate compass headings.
-        sStatus.fRoll *= 57.295779513082320876798154814105f;
-        sStatus.fPitch *= 57.295779513082320876798154814105f;
-        sStatus.fYaw *= 57.295779513082320876798154814105f;
-		if(sStatus.fYaw < 0)
-		{
-			sStatus.fYaw += 360.0f;
-		}
-
-        //
         // Loop counter print once per second.
         if (g_loopCount && g_PrintRawBMIData)
         {
@@ -2125,6 +2140,11 @@ void ProcessIMUData(void)
             g_loopCount = false;
         }
     }
+
+    //
+    // Enable the DCM if it has not been started yet.
+    if (g_bDCMStarted == 0)
+        TimerEnable(DCM_TIMER, TIMER_A);
 
     //
     // Reset the flag
@@ -2173,14 +2193,15 @@ void UpdateTrajectory(void)
             	UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", ui32RWThrottle, ui32LWThrottle);
         	}
 
-
             //
             // TODO: Ground travel logic.
         }
         else {
             float fDesiredRoll = 0.0f;
             float fDesiredPitch = 0.0f;
-            float fDesiredYawRate = 0.0f;
+            float fYawRate = 5.0f;
+            //
+            // TODO: Figure out a good yaw rate.
 
         	if (g_PrintFlag) {
         		UARTprintf("Flying.\r\n");
@@ -2203,10 +2224,8 @@ void UpdateTrajectory(void)
                 sThrottle.fAirMtr5Throttle = ui32Throttle + ZEROTHROTTLE5;
                 sThrottle.fAirMtr6Throttle = ui32Throttle + ZEROTHROTTLE6;
 #endif
-
         	}
-        	else
-        	{
+        	else {
         		sThrottle.fAirMtr1Throttle = ui32Throttle + ZEROTHROTTLE1;
         		sThrottle.fAirMtr2Throttle = ui32Throttle + ZEROTHROTTLE2;
         		sThrottle.fAirMtr3Throttle = ui32Throttle + ZEROTHROTTLE3;
@@ -2216,25 +2235,24 @@ void UpdateTrajectory(void)
                 sThrottle.fAirMtr5Throttle = ui32Throttle + ZEROTHROTTLE5;
                 sThrottle.fAirMtr6Throttle = ui32Throttle + ZEROTHROTTLE6;
 #endif
-
+                //
+                // Get the yaw value.
+                int32_t i32Yaw = (int32_t)(g_sRxPack.sControlPacket.yaw);
 #if DEBUG
         		//
         		// Get the roll, pitch, yaw for printing to the console.
-        		int32_t ui32Roll = (int32_t)(g_sRxPack.sControlPacket.roll) * 25 / 100;
-        		int32_t ui32Pitch = (int32_t)(g_sRxPack.sControlPacket.pitch * 25 / 100);
-        		int32_t ui32Yaw = (int32_t)(g_sRxPack.sControlPacket.yaw);
+        		int32_t i32Roll = (int32_t)(g_sRxPack.sControlPacket.roll) * 25 / 100;
+        		int32_t i32Pitch = (int32_t)(g_sRxPack.sControlPacket.pitch * 25 / 100);
 
         		if (g_PrintFlag) {
 					UARTprintf("Throttle: %d\r\n", ui32Throttle);
-					UARTprintf("Desired Roll: %d\r\nDesired Pitch: %d\r\nYaw: %d\r\n", ui32Roll, ui32Pitch, ui32Yaw);
+					UARTprintf("Desired Roll: %d\r\nDesired Pitch: %d\r\nYaw: %d\r\n", i32Roll, i32Pitch, i32Yaw);
         		}
 #endif
-
                 //
                 // Calculate the roll, pitch and yaw.
         		fDesiredRoll = g_sRxPack.sControlPacket.roll / 100.0f * 25.0f;
         		fDesiredPitch = g_sRxPack.sControlPacket.pitch / 100.0f * 25.0f;
-        		fDesiredYawRate = (g_sRxPack.sControlPacket.yaw);
 
         		//
         		// Check if the pitch error is less than 0.5 or -0.5.
@@ -2394,10 +2412,20 @@ void UpdateTrajectory(void)
                 		}
         			}
         		}
-        	}
-        	//
-        	// TODO: What about yaw?
 
+        		//
+        		// TODO: What about yaw?
+        		if (i32Yaw == 1) {
+        		    //
+        		    // User is pressing right bumper. Rotate right (clockwise from above).
+        		    // TODO: Logic to make the vehicle rotate right.
+        		}
+        		else if (i32Yaw == -1) {
+        		    //
+        		    // User is pressing left bumper. Rotate left (counter-clockwise from above).
+        		    // TODO: Logic to make the vehicle rotate left.
+        		}
+        	}
 
         	//
         	// Set the new throttles for the motors.
@@ -2441,5 +2469,4 @@ void UpdateTrajectory(void)
 	//
 	// Reset printing loop count for debugging.
     g_PrintFlag = false;
-
 }

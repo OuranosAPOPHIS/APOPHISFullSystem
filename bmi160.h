@@ -200,7 +200,23 @@
  * Register: MAG_IF
  *
  */
+#define BMI160_MAG_DIRECT_ENABLE 0x80
 #define BMI160_MAG_BURST_READ 0x03
+
+#define BMM150_DATA_REG 0x42
+#define BMM150_RESET_REG 0x4B
+#define BMM150_CONFIG_REG 0x4C
+
+#define BMM150_SOFT_RESET 0x82
+#define BMM150_SUSPEND_STARTUP 0x00
+#define BMM150_SLEEP_STARTUP 0x01
+
+#define BMM150_DATA_RATE_10_HZ 0x00
+#define BMM150_DATA_RATE_8_HZ 0x18
+#define BMM150_DATA_RATE_25_HZ 0x30
+#define BMM150_DATA_RATE_30_HZ 0x38
+#define BMM150_NORMAL_MODE 0x00
+#define BMM150_SLEEP_MODE 0x03
 
 /*
  * Register: INT_EN
@@ -443,8 +459,8 @@
 //*****************************************************************************
 //
 // Initialization Functions
-void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy,
-                uint8_t GyroRate, uint8_t GyroAccuracy, uint8_t MagRate, uint8_t *offsetValues);
+void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uint8_t GyroRate,
+                uint8_t GyroAccuracy, uint8_t MagRate, uint8_t *offsetValues, uint32_t sysClockSpeed);
 
 /*
 void InitBMM150(uint32_t I2C_base); */
