@@ -570,6 +570,17 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation)
     UARTprintf("Initializing IMU...\n\r");
 
     //
+    // Stop the Clock, Reset and Enable I2C Module
+    // in Master Function
+    SysCtlPeripheralDisable(BOOST_PERIPH);
+    SysCtlPeripheralReset(BOOST_PERIPH);
+    SysCtlPeripheralEnable(BOOST_PERIPH);
+
+    //
+    // Wait for the Peripheral to be ready for programming
+    while(!SysCtlPeripheralReady(BOOST_PERIPH));
+
+    //
     // Initialize the GPIO Peripherals used by this device.
     SysCtlPeripheralEnable(BOOST_GPIO_PERIPH1);
     SysCtlPeripheralEnable(BOOST_GPIO_PERIPH2);
