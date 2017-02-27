@@ -24,10 +24,4 @@
 		<nature>org.eclipse.cdt.core.ccnature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
-	<variableList>
-		<variable>
-			<name>SW_ROOT</name>
-			<value>file:/C:/Tivaware/TM4C1294XL</value>
-		</variable>
-	</variableList>
 </projectDescription>
