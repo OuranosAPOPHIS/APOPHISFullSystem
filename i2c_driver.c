@@ -31,6 +31,10 @@ void I2CBurstWrite(uint32_t I2C_base, uint8_t deviceAddress, int numBytes, uint8
     int index = 0;
 
     //
+    // Disable interrupts.
+    IntMasterDisable();
+
+    //
     // Set the slave address. False indicates that it is a
     // read command. (Master is writing to the slave).
     I2CMasterSlaveAddrSet(I2C_base, deviceAddress, false);
@@ -38,10 +42,6 @@ void I2CBurstWrite(uint32_t I2C_base, uint8_t deviceAddress, int numBytes, uint8
     //
     // Send data to the device.
     I2CMasterDataPut(I2C_base, txBuffer[index++]);
-
-    //
-    // Disable interrupts.
-    IntMasterDisable();
 
     //
     // Initiate a slave read in burst form.
@@ -96,7 +96,7 @@ void I2CBurstWrite(uint32_t I2C_base, uint8_t deviceAddress, int numBytes, uint8
 
     //
     // All done, re-enable interrupts.
-    //IntMasterEnable();
+    IntMasterEnable();
 }
 
 //*****************************************************************************
@@ -149,6 +149,8 @@ void I2CRead(uint32_t I2C_base, uint8_t deviceAddress, uint8_t readRegister,
              int numBytes, uint8_t *rxBuffer)
 {
     int index = 0;
+
+    IntMasterDisable();
 
     //
     // Make sure the bus is clear.
@@ -236,6 +238,8 @@ void I2CRead(uint32_t I2C_base, uint8_t deviceAddress, uint8_t readRegister,
         // Read one last byte.
         rxBuffer[index++] = I2CMasterDataGet(I2C_base);
     }
+
+    IntMasterEnable();
 }
 
 //*****************************************************************************

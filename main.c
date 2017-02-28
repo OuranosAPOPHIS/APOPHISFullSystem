@@ -66,6 +66,8 @@
 #define AIRMTRS_ACTIVATED true
 
 #define ONEG 16384
+#define BYPASS true
+#define CONTROL false
 
 //*****************************************************************************
 //
@@ -339,9 +341,11 @@ int main(void) {
 	//
 	// Set the clocking to run at 120 MHz.
 	g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN |
-			SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480, 120000000);
-			//SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
-	//SYSCTL_XTAL_16MHZ, 16000000);
+            SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480, 120000000);
+	        //SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
+	        //SYSCTL_XTAL_16MHZ, 16000000);
+
+
 
 	//
 	// Disable interrupts during initialization period.
@@ -429,6 +433,7 @@ int main(void) {
 
 	InitIMU(g_SysClockSpeed, g_offsetData);
 
+#if !BYPASS
 	//
 	// Get the initial reading of the gyro and accel to calculate a bias.
 	while (bBiasCalcBad) {
@@ -514,11 +519,7 @@ int main(void) {
 		} else
 			UARTprintf("BAD CALIBRATION X and Y axes are not flat!!\r\n");
 	}
-
-	//
-	// Initialize the DCM.
-	CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.3f, 0.4f, 0.3f);
-	g_bDCMStarted = false;
+#endif
 
 #endif
 
@@ -536,6 +537,11 @@ int main(void) {
 	sThrottle.fAirMtr2Throttle = PWMINITIALZE;
 	sThrottle.fAirMtr3Throttle = PWMINITIALZE;
 	sThrottle.fAirMtr4Throttle = PWMINITIALZE;
+#if !APOPHIS
+    sThrottle.fAirMtr5Throttle = PWMINITIALZE;
+    sThrottle.fAirMtr6Throttle = PWMINITIALZE;
+#endif
+
 	sThrottle.fGndMtrRWThrottle = 0.0f;
 	sThrottle.fGndMtrLWThrottle = 0.0f;
 
@@ -553,7 +559,16 @@ int main(void) {
 	// Before starting program, wait for a button press on either switch.
 	UARTprintf("Initialization Complete!\r\nPress left button to start.");
 
+	TurnOnLED(5);
+
 	WaitForButtonPress(LEFT_BUTTON);
+
+    TurnOffLED(5);
+
+    //
+    // Initialize the DCM.
+    CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.3f, 0.4f, 0.3f);
+    g_bDCMStarted = false;
 
 	//
 	// Initialization complete. Enable interrupts.
@@ -2136,39 +2151,39 @@ void UpdateTrajectory(void) {
 			//
 			// We are flying. Set the parameters sent from the radio.
 			// Get the throttle.
-			uint32_t ui32Throttle =
+			int32_t ui32Throttle =
 					(int32_t) (g_sRxPack.sControlPacket.throttle);
 
 			if (g_sRxPack.sControlPacket.throttle == 0) {
-				sThrottle.fAirMtr1Throttle = ui32Throttle + ZEROTHROTTLE1;
-				sThrottle.fAirMtr2Throttle = ui32Throttle + ZEROTHROTTLE2;
-				sThrottle.fAirMtr3Throttle = ui32Throttle + ZEROTHROTTLE3;
-				sThrottle.fAirMtr4Throttle = ui32Throttle + ZEROTHROTTLE4;
+				sThrottle.fAirMtr1Throttle = ZEROTHROTTLE1;
+				sThrottle.fAirMtr2Throttle = ZEROTHROTTLE2;
+				sThrottle.fAirMtr3Throttle = ZEROTHROTTLE3;
+				sThrottle.fAirMtr4Throttle = ZEROTHROTTLE4;
 
 #if !APOPHIS
-				sThrottle.fAirMtr5Throttle = ui32Throttle + ZEROTHROTTLE5;
-				sThrottle.fAirMtr6Throttle = ui32Throttle + ZEROTHROTTLE6;
+				sThrottle.fAirMtr5Throttle = ZEROTHROTTLE5;
+				sThrottle.fAirMtr6Throttle = ZEROTHROTTLE6;
 #endif
 			} else {
 				if (g_sRxPack.sControlPacket.throttle <= 0) {
-					sThrottle.fAirMtr1Throttle = ui32Throttle + HOVERTHROTTLE1;
-					sThrottle.fAirMtr2Throttle = ui32Throttle + HOVERTHROTTLE2;
-					sThrottle.fAirMtr3Throttle = ui32Throttle + HOVERTHROTTLE3;
-					sThrottle.fAirMtr4Throttle = ui32Throttle + HOVERTHROTTLE4;
+					sThrottle.fAirMtr1Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE1;
+					sThrottle.fAirMtr2Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE2;
+					sThrottle.fAirMtr3Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE3;
+					sThrottle.fAirMtr4Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE4;
 
 #if !APOPHIS
-					sThrottle.fAirMtr5Throttle = ui32Throttle + HOVERTHROTTLE5;
-					sThrottle.fAirMtr6Throttle = ui32Throttle + HOVERTHROTTLE6;
+					sThrottle.fAirMtr5Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE5;
+					sThrottle.fAirMtr6Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE6;
 #endif
 				} else {
-					sThrottle.fAirMtr1Throttle = ui32Throttle + ZEROTHROTTLE1;
-					sThrottle.fAirMtr2Throttle = ui32Throttle + ZEROTHROTTLE2;
-					sThrottle.fAirMtr3Throttle = ui32Throttle + ZEROTHROTTLE3;
-					sThrottle.fAirMtr4Throttle = ui32Throttle + ZEROTHROTTLE4;
+					sThrottle.fAirMtr1Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;
+					sThrottle.fAirMtr2Throttle = (ui32Throttle * 50) + ZEROTHROTTLE2;
+					sThrottle.fAirMtr3Throttle = (ui32Throttle * 50) + ZEROTHROTTLE3;
+					sThrottle.fAirMtr4Throttle = (ui32Throttle * 50) + ZEROTHROTTLE4;
 
 #if !APOPHIS
-					sThrottle.fAirMtr5Throttle = ui32Throttle + ZEROTHROTTLE5;
-					sThrottle.fAirMtr6Throttle = ui32Throttle + ZEROTHROTTLE6;
+					sThrottle.fAirMtr5Throttle = (ui32Throttle * 50) + ZEROTHROTTLE5;
+					sThrottle.fAirMtr6Throttle = (ui32Throttle * 50) + ZEROTHROTTLE6;
 				}
 #endif
 				//
@@ -2193,7 +2208,7 @@ void UpdateTrajectory(void) {
 				// Calculate the roll, pitch and yaw.
 				fDesiredRoll = g_sRxPack.sControlPacket.roll / 100.0f * 25.0f;
 				fDesiredPitch = g_sRxPack.sControlPacket.pitch / 100.0f * 25.0f;
-
+#if CONTROL
 				//
 				// Check if the pitch error is less than 0.5 or -0.5.
 				if (((sStatus.fPitch - fDesiredPitch) > 0.5f)
@@ -2365,8 +2380,9 @@ void UpdateTrajectory(void) {
 					// User is pressing left bumper. Rotate left (counter-clockwise from above).
 					// TODO: Logic to make the vehicle rotate left.
 				}
-			}
+#endif
 
+			}
 			//
 			// Set the new throttles for the motors.
 			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1,
