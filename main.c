@@ -55,7 +55,7 @@
 #define APOPHIS false
 
 #define CONSOLE_ACTIVATED true
-#define RADIO_ACTIVATED true
+#define RADIO_ACTIVATED false
 #define GPS_ACTIVATED false
 #define GNDMTRS_ACTIVATED false
 #define SOLARS_ACTIVATED false
@@ -68,6 +68,7 @@
 #define ONEG 16384
 #define BYPASS true
 #define CONTROL false
+#define SPEEDIS120MHZ true
 
 //*****************************************************************************
 //
@@ -133,7 +134,7 @@ typedef struct {
 typedef struct {
 	float fGndMtrLWThrottle;
 	float fGndMtrRWThrottle;
-	float fAirMtr1Throttle;
+	uint32_t fAirMtr1Throttle;
 	float fAirMtr2Throttle;
 	float fAirMtr3Throttle;
 	float fAirMtr4Throttle;
@@ -144,11 +145,14 @@ typedef struct {
 } SystemThrottle;
 
 //
+// Throttle values for the air motors.
+uint32_t g_ui32ZeroThrottle = 0;
+uint32_t g_ui32MaxThrottle = 0;
+uint32_t g_ui32ThrottleIncrement = 0;
+
+//
 // System throttle structure.
 SystemThrottle sThrottle;
-
-uint32_t g_mtrThrottle = ZEROTHROTTLE1;
-
 //
 // Initialize the state of the system.
 SystemStatus sStatus;
@@ -331,6 +335,8 @@ int main(void) {
 
 	bool bBiasCalcBad = true;
 
+	uint32_t speed = 0;
+
 	//
 	// Enable lazy stacking for interrupt handlers.  This allows floating-point
 	// instructions to be used within interrupt handlers, but at the expense of
@@ -340,12 +346,13 @@ int main(void) {
 
 	//
 	// Set the clocking to run at 120 MHz.
+#if SPEEDIS120MHZ
 	g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN |
             SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480, 120000000);
-	        //SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
-	        //SYSCTL_XTAL_16MHZ, 16000000);
-
-
+#else
+	g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
+	        SYSCTL_XTAL_16MHZ, 16000000);
+#endif
 
 	//
 	// Disable interrupts during initialization period.
@@ -422,15 +429,22 @@ int main(void) {
 #endif
 
 	//
+	// Calculate zerothrottle corresponding to 1 ms pulse.
+    speed = (g_SysClockSpeed / PWM_FREQUENCY / 64);
+	g_ui32ZeroThrottle =  (speed * 1 * PWM_FREQUENCY) / 1000;
+	g_ui32MaxThrottle = (speed * 2 * PWM_FREQUENCY) / 1000;
+	g_ui32ThrottleIncrement = g_ui32ZeroThrottle / 20;
+	g_ui32ZeroThrottle += g_ui32ThrottleIncrement * 3;
+
+	//
 	// Initialize the air motors if activated.
 #if AIRMTRS_ACTIVATED
-	InitAirMtrs(g_SysClockSpeed);
+	InitAirMtrs(g_SysClockSpeed, g_ui32ZeroThrottle);
 #endif
 
 	//
 	// Initialize the BMI160 if enabled.
 #if IMU_ACTIVATED
-
 	InitIMU(g_SysClockSpeed, g_offsetData);
 
 #if !BYPASS
@@ -533,13 +547,13 @@ int main(void) {
 
 	//
 	// Initialize the throttle of the system.
-	sThrottle.fAirMtr1Throttle = PWMINITIALZE;
-	sThrottle.fAirMtr2Throttle = PWMINITIALZE;
-	sThrottle.fAirMtr3Throttle = PWMINITIALZE;
-	sThrottle.fAirMtr4Throttle = PWMINITIALZE;
+	sThrottle.fAirMtr1Throttle = g_ui32ZeroThrottle;
+	sThrottle.fAirMtr2Throttle = g_ui32ZeroThrottle;
+	sThrottle.fAirMtr3Throttle = g_ui32ZeroThrottle;
+	sThrottle.fAirMtr4Throttle = g_ui32ZeroThrottle;
 #if !APOPHIS
-    sThrottle.fAirMtr5Throttle = PWMINITIALZE;
-    sThrottle.fAirMtr6Throttle = PWMINITIALZE;
+    sThrottle.fAirMtr5Throttle = g_ui32ZeroThrottle;
+    sThrottle.fAirMtr6Throttle = g_ui32ZeroThrottle;
 #endif
 
 	sThrottle.fGndMtrRWThrottle = 0.0f;
@@ -691,7 +705,7 @@ int main(void) {
 		// Update the trajectory.
 		if (!sStatus.bRadioConnected)
 			sStatus.bMode = true;
-		UpdateTrajectory();
+		//UpdateTrajectory();
 #endif
 
 	}
@@ -1520,52 +1534,50 @@ void Menu(char charReceived) {
 #if DEBUG
 	case 'W': // Increase throttle of air motors.
 	{
-		g_mtrThrottle += 100;
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtrThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtrThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtrThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtrThrottle);
+		sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.fAirMtr1Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.fAirMtr1Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.fAirMtr1Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.fAirMtr1Throttle);
 
 #if !APOPHIS
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, g_mtrThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, g_mtrThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, sThrottle.fAirMtr1Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, sThrottle.fAirMtr1Throttle);
 #endif
 
-		UARTprintf("Throttle Increase: %d\r\n", g_mtrThrottle);
+		UARTprintf("Throttle Increase: %d\r\n", sThrottle.fAirMtr1Throttle);
 		break;
 	}
 	case 'S': // Decrease throttle of air motors.
 	{
-		g_mtrThrottle -= 100;
-		if (g_mtrThrottle < ZEROTHROTTLE1)
-			g_mtrThrottle += 100;
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_mtrThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_mtrThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_mtrThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_mtrThrottle);
+		sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
+
+		if (sThrottle.fAirMtr1Throttle < g_ui32ZeroThrottle)
+			sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.fAirMtr1Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.fAirMtr1Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.fAirMtr1Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.fAirMtr1Throttle);
 
 #if !APOPHIS
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, g_mtrThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, g_mtrThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, sThrottle.fAirMtr1Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, sThrottle.fAirMtr1Throttle);
 #endif
-
-		UARTprintf("Throttle Decrease: %d\r\n", g_mtrThrottle);
+		UARTprintf("Throttle Decrease: %d\r\n", sThrottle.fAirMtr1Throttle);
 		break;
 	}
 	case 'X': // kill the throttle.
 	{
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE1);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE2);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE3);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE4);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_ui32ZeroThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_ui32ZeroThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_ui32ZeroThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_ui32ZeroThrottle);
 
 #if !APOPHIS
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, ZEROTHROTTLE5);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, ZEROTHROTTLE6);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, g_ui32ZeroThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, g_ui32ZeroThrottle);
 #endif
-
-		g_mtrThrottle = ZEROTHROTTLE1;
-		UARTprintf("Throttle Decrease: %d\r\n", g_mtrThrottle);
+		UARTprintf("Throttle Decrease: %d\r\n", g_ui32ZeroThrottle);
 		break;
 	}
 #endif
@@ -2155,35 +2167,35 @@ void UpdateTrajectory(void) {
 					(int32_t) (g_sRxPack.sControlPacket.throttle);
 
 			if (g_sRxPack.sControlPacket.throttle == 0) {
-				sThrottle.fAirMtr1Throttle = ZEROTHROTTLE1;
-				sThrottle.fAirMtr2Throttle = ZEROTHROTTLE2;
-				sThrottle.fAirMtr3Throttle = ZEROTHROTTLE3;
-				sThrottle.fAirMtr4Throttle = ZEROTHROTTLE4;
+				sThrottle.fAirMtr1Throttle = g_ui32ZeroThrottle;
+				sThrottle.fAirMtr2Throttle = g_ui32ZeroThrottle;
+				sThrottle.fAirMtr3Throttle = g_ui32ZeroThrottle;
+				sThrottle.fAirMtr4Throttle = g_ui32ZeroThrottle;
 
 #if !APOPHIS
-				sThrottle.fAirMtr5Throttle = ZEROTHROTTLE5;
-				sThrottle.fAirMtr6Throttle = ZEROTHROTTLE6;
+				sThrottle.fAirMtr5Throttle = g_ui32ZeroThrottle;
+				sThrottle.fAirMtr6Throttle = g_ui32ZeroThrottle;
 #endif
 			} else {
 				if (g_sRxPack.sControlPacket.throttle <= 0) {
-					sThrottle.fAirMtr1Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE1;
-					sThrottle.fAirMtr2Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE2;
-					sThrottle.fAirMtr3Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE3;
-					sThrottle.fAirMtr4Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE4;
+					sThrottle.fAirMtr1Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE1;
+					sThrottle.fAirMtr2Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE2;
+					sThrottle.fAirMtr3Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE3;
+					sThrottle.fAirMtr4Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE4;
 
 #if !APOPHIS
-					sThrottle.fAirMtr5Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE5;
-					sThrottle.fAirMtr6Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;//HOVERTHROTTLE6;
+					sThrottle.fAirMtr5Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE5;
+					sThrottle.fAirMtr6Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE6;
 #endif
 				} else {
-					sThrottle.fAirMtr1Throttle = (ui32Throttle * 50) + ZEROTHROTTLE1;
-					sThrottle.fAirMtr2Throttle = (ui32Throttle * 50) + ZEROTHROTTLE2;
-					sThrottle.fAirMtr3Throttle = (ui32Throttle * 50) + ZEROTHROTTLE3;
-					sThrottle.fAirMtr4Throttle = (ui32Throttle * 50) + ZEROTHROTTLE4;
+					sThrottle.fAirMtr1Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
+					sThrottle.fAirMtr2Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
+					sThrottle.fAirMtr3Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
+					sThrottle.fAirMtr4Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
 
 #if !APOPHIS
-					sThrottle.fAirMtr5Throttle = (ui32Throttle * 50) + ZEROTHROTTLE5;
-					sThrottle.fAirMtr6Throttle = (ui32Throttle * 50) + ZEROTHROTTLE6;
+					sThrottle.fAirMtr5Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
+					sThrottle.fAirMtr6Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
 				}
 #endif
 				//
@@ -2380,9 +2392,9 @@ void UpdateTrajectory(void) {
 					// User is pressing left bumper. Rotate left (counter-clockwise from above).
 					// TODO: Logic to make the vehicle rotate left.
 				}
-#endif
-
 			}
+#endif
+		}
 			//
 			// Set the new throttles for the motors.
 			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1,
@@ -2398,8 +2410,9 @@ void UpdateTrajectory(void) {
 					sThrottle.fAirMtr5Throttle);
 			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6,
 					sThrottle.fAirMtr6Throttle);
-#endif
 		}
+#endif
+
 
 	} else {
 		//

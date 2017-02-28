@@ -50,6 +50,6 @@ void InitAltimeter(uint32_t SysClockSpeed, int8_t *offsetValues);
 /*
  * PWM air motor initializations.
  */
-void InitAirMtrs(uint32_t sysClockSpeed);
+void InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle);
 
 #endif /* INITIALIZATIONS_H_ */

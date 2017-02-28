@@ -711,11 +711,19 @@ void InitAltimeter(uint32_t SysClockSpeed, int8_t *offsetValues)
  * Initialization for the PWM module 0 for the
  * air motors. PWM M0 pins 0-3 wll be used.
  */
-void InitAirMtrs(uint32_t sysClockSpeed)
+void InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle)
 {
     uint32_t speed;
 
     UARTprintf("Initializing air motors...\n\r");
+
+    SysCtlPeripheralDisable(GPIO_PORTK_BASE);
+    SysCtlPeripheralReset(GPIO_PORTK_BASE);
+    SysCtlPeripheralEnable(GPIO_PORTK_BASE);
+
+    //
+    // Wait for the Peripheral to be ready for programming
+    while(!SysCtlPeripheralReady(GPIO_PORTK_BASE));
 
     //
     // Turn on the peripherals for the PWM.
@@ -737,15 +745,17 @@ void InitAirMtrs(uint32_t sysClockSpeed)
     SysCtlPeripheralEnable(GPIO_PORTK_BASE);
 
     GPIOPinConfigure(GPIO_PG1_M0PWM5);
-    GPIOPinConfigure(GPIO_PK4_M0PWM6);
+   // GPIOPinConfigure(GPIO_PK4_M0PWM6);
 
     GPIOPinTypePWM(GPIO_PORTG_BASE, PWM_MTR_5);
-    GPIOPinTypePWM(GPIO_PORTK_BASE, PWM_MTR_6);
+    //GPIOPinTypePWM(GPIO_PORTK_BASE, PWM_MTR_6);
 #endif
+
+    PWMClockSet(PWM0_BASE, PWM_SYSCLK_DIV_64);
 
     //
     // Frequency of PWM.
-    speed = (sysClockSpeed / PWM_FREQUENCY) - 1;
+    speed = (sysClockSpeed / 64 / PWM_FREQUENCY);
 
     //
     // Configure the PWM.
@@ -757,6 +767,10 @@ void InitAirMtrs(uint32_t sysClockSpeed)
     PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, speed);
     PWMGenPeriodSet(PWM0_BASE, PWM_GEN_2, speed);
 
+    uint32_t stuff = PWMGenPeriodGet(PWM0_BASE, PWM_GEN_0);
+
+    UARTprintf("PWM generator period: %d\r\n", stuff);
+
 #if !APOPHIS
     //
     // Set up the generator for the 6th motor.
@@ -765,15 +779,15 @@ void InitAirMtrs(uint32_t sysClockSpeed)
 #endif
 
     //
-    // Initialize pulse to 50%
-    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE1);
-    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE2);
-    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE3);
-    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE4);
+    // Initialize pulse to 5%
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, zeroThrottle);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, zeroThrottle);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, zeroThrottle);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, zeroThrottle);
 
 #if !APOPHIS
-    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, ZEROTHROTTLE5);
-    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, ZEROTHROTTLE6);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, zeroThrottle);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, zeroThrottle);
 
     PWMOutputState(PWM0_BASE, PWM_OUT_1_BIT | PWM_OUT_2_BIT | PWM_OUT_3_BIT |
                    PWM_OUT_4_BIT | PWM_OUT_5_BIT | PWM_OUT_6_BIT, true);
