@@ -11,6 +11,7 @@
 
 #include "driverlib/i2c.h"
 #include "driverlib/interrupt.h"
+#include "driverlib/sysctl.h"
 
 #include "i2c_driver.h"
 
@@ -51,19 +52,11 @@ void I2CBurstWrite(uint32_t I2C_base, uint8_t deviceAddress, int numBytes, uint8
     // Wait for the transaction to finish.
     I2CWait(I2C_base);
 
-    //
-    // Re-enable interrupts.
-   // IntMasterEnable();
-
     while(index < numBytes - 1)
     {
         //
         // Send the data.
         I2CMasterDataPut(I2C_base, txBuffer[index++]);
-
-        //
-        // Disable Interrupts.
-        //IntMasterDisable();
 
         //
         // Initiate a slave read in burst form.
@@ -72,19 +65,11 @@ void I2CBurstWrite(uint32_t I2C_base, uint8_t deviceAddress, int numBytes, uint8
         //
         // Wait for the transaction to finish.
         I2CWait(I2C_base);
-
-        //
-        // Re-enable interrupts.
-       // IntMasterEnable();
     }
 
     //
     // Send the last piece of data.
     I2CMasterDataPut(I2C_base, txBuffer[index++]);
-
-    //
-    // Disable interrupts.
-   // IntMasterDisable();
 
     //
     // Finish the read.
@@ -119,20 +104,12 @@ void I2CSingleWrite(uint32_t I2C_base, uint8_t deviceAddress, uint8_t *txBuffer)
     I2CMasterDataPut(I2C_base, txBuffer[0]);
 
     //
-    // Disable interrupts to prevent corrupting communication.
-   // IntMasterDisable();
-
-    //
     // Initiate a slave read in burst form.
     I2CMasterControl(I2C_base, I2C_MASTER_CMD_SINGLE_SEND);
 
     //
     // Wait for the transaction to finish.
     I2CWait(I2C_base);
-
-    //
-    // Re-enable interrupts.
-    //IntMasterEnable();
 }
 //*****************************************************************************
 //
@@ -255,9 +232,8 @@ uint32_t I2CWait(uint32_t I2C_base)
 
     //
     // Wait for the transaction to complete.
-    while(I2CMasterBusy(I2C_base))
-    {
-    }
+    SysCtlDelay(1000);
+    while((I2CMasterBusy(I2C_base)));
 
     //
     // Get the error status.
@@ -269,6 +245,7 @@ uint32_t I2CWait(uint32_t I2C_base)
     {
         //
         // No error.
+        return status;
     }
     else if (status == I2C_MASTER_ERR_ADDR_ACK)
     {

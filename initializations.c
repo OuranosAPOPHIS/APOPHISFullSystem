@@ -640,9 +640,7 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation)
     //
     // Before calling the BMI160 initialize function, make sure the I2C
     // bus is not busy.
-    while(I2CMasterBusBusy(BOOST_I2C))
-    {
-    }
+    while(I2CMasterBusBusy(BOOST_I2C));
 
     //
     // Initialize the BMI160 to have a 25Hz update rate for the
@@ -745,10 +743,10 @@ void InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle)
     SysCtlPeripheralEnable(GPIO_PORTK_BASE);
 
     GPIOPinConfigure(GPIO_PG1_M0PWM5);
-   // GPIOPinConfigure(GPIO_PK4_M0PWM6);
+    GPIOPinConfigure(GPIO_PK4_M0PWM6);
 
     GPIOPinTypePWM(GPIO_PORTG_BASE, PWM_MTR_5);
-    //GPIOPinTypePWM(GPIO_PORTK_BASE, PWM_MTR_6);
+    GPIOPinTypePWM(GPIO_PORTK_BASE, PWM_MTR_6);
 #endif
 
     PWMClockSet(PWM0_BASE, PWM_SYSCLK_DIV_64);

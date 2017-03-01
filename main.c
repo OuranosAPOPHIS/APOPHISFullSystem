@@ -55,7 +55,7 @@
 #define APOPHIS false
 
 #define CONSOLE_ACTIVATED true
-#define RADIO_ACTIVATED false
+#define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
 #define GNDMTRS_ACTIVATED false
 #define SOLARS_ACTIVATED false
@@ -66,8 +66,7 @@
 #define AIRMTRS_ACTIVATED true
 
 #define ONEG 16384
-#define BYPASS true
-#define CONTROL false
+#define BYPASS false
 #define SPEEDIS120MHZ true
 
 //*****************************************************************************
@@ -433,7 +432,7 @@ int main(void) {
     speed = (g_SysClockSpeed / PWM_FREQUENCY / 64);
 	g_ui32ZeroThrottle =  (speed * 1 * PWM_FREQUENCY) / 1000;
 	g_ui32MaxThrottle = (speed * 2 * PWM_FREQUENCY) / 1000;
-	g_ui32ThrottleIncrement = g_ui32ZeroThrottle / 20;
+	g_ui32ThrottleIncrement = g_ui32ZeroThrottle / 50;
 	g_ui32ZeroThrottle += g_ui32ThrottleIncrement * 3;
 
 	//
@@ -455,7 +454,6 @@ int main(void) {
 		int index, j;
 		uint32_t ui32Sum[6] = { 0 };
 		uint16_t bias[6][50] = { 0 };
-		IntMasterEnable();
 		while (numCalcs < 50) {
 			if (g_IMUDataFlag) {
 				uint8_t status;
@@ -489,8 +487,6 @@ int main(void) {
 				}
 			}
 		}
-
-		IntMasterDisable();
 
 		//
 		// Calculate the bias.
@@ -581,7 +577,7 @@ int main(void) {
 
     //
     // Initialize the DCM.
-    CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.3f, 0.4f, 0.3f);
+    CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.5f, 0.3f, 0.2f);
     g_bDCMStarted = false;
 
 	//
@@ -705,7 +701,7 @@ int main(void) {
 		// Update the trajectory.
 		if (!sStatus.bRadioConnected)
 			sStatus.bMode = true;
-		//UpdateTrajectory();
+		UpdateTrajectory();
 #endif
 
 	}
@@ -2152,7 +2148,6 @@ void UpdateTrajectory(void) {
 		} else {
 			float fDesiredRoll = 0.0f;
 			float fDesiredPitch = 0.0f;
-			float fYawRate = 5.0f;
 			//
 			// TODO: Figure out a good yaw rate.
 
@@ -2176,27 +2171,44 @@ void UpdateTrajectory(void) {
 				sThrottle.fAirMtr5Throttle = g_ui32ZeroThrottle;
 				sThrottle.fAirMtr6Throttle = g_ui32ZeroThrottle;
 #endif
-			} else {
-				if (g_sRxPack.sControlPacket.throttle <= 0) {
-					sThrottle.fAirMtr1Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE1;
-					sThrottle.fAirMtr2Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE2;
-					sThrottle.fAirMtr3Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE3;
-					sThrottle.fAirMtr4Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE4;
+            }
+            else
+            {
+                if (g_sRxPack.sControlPacket.throttle <= 0)
+                {
+                    sThrottle.fAirMtr1Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE1;
+                    sThrottle.fAirMtr2Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE2;
+                    sThrottle.fAirMtr3Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE3;
+                    sThrottle.fAirMtr4Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE4;
 
 #if !APOPHIS
-					sThrottle.fAirMtr5Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE5;
-					sThrottle.fAirMtr6Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;//HOVERTHROTTLE6;
+                    sThrottle.fAirMtr5Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE5;
+                    sThrottle.fAirMtr6Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE6;
 #endif
-				} else {
-					sThrottle.fAirMtr1Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
-					sThrottle.fAirMtr2Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
-					sThrottle.fAirMtr3Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
-					sThrottle.fAirMtr4Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
+                }
+                else
+                {
+                    sThrottle.fAirMtr1Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+                    sThrottle.fAirMtr2Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+                    sThrottle.fAirMtr3Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+                    sThrottle.fAirMtr4Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
 
 #if !APOPHIS
-					sThrottle.fAirMtr5Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
-					sThrottle.fAirMtr6Throttle = (ui32Throttle * 50) + g_ui32ZeroThrottle;
-				}
+                    sThrottle.fAirMtr5Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+                    sThrottle.fAirMtr6Throttle = (ui32Throttle
+                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+                }
 #endif
 				//
 				// Get the yaw value.
@@ -2220,7 +2232,7 @@ void UpdateTrajectory(void) {
 				// Calculate the roll, pitch and yaw.
 				fDesiredRoll = g_sRxPack.sControlPacket.roll / 100.0f * 25.0f;
 				fDesiredPitch = g_sRxPack.sControlPacket.pitch / 100.0f * 25.0f;
-#if CONTROL
+#if !BYPASS
 				//
 				// Check if the pitch error is less than 0.5 or -0.5.
 				if (((sStatus.fPitch - fDesiredPitch) > 0.5f)
@@ -2233,13 +2245,13 @@ void UpdateTrajectory(void) {
 #if APOPHIS
 						//
 						// "Pull Up", increase front motor throttle and decrease back motor throttle.
-						sThrottle.fAirMtr1Throttle += 500;
-						sThrottle.fAirMtr3Throttle -= 500;
+						sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr3Throttle -= g_ui32ThrottleIncrement;
 #else
-						sThrottle.fAirMtr1Throttle += 500;
-						sThrottle.fAirMtr3Throttle -= 500;
-						sThrottle.fAirMtr4Throttle -= 500;
-						sThrottle.fAirMtr6Throttle += 500;
+						sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr3Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr4Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr6Throttle += g_ui32ThrottleIncrement;
 #endif
 						if (g_PrintFlag) {
 							UARTprintf("Neg Pitch and Pull Up\r\n");
@@ -2252,13 +2264,13 @@ void UpdateTrajectory(void) {
 #if APOPHIS
 						//
 						// "Pull Down", decrease front motor throttle and increase back motor throttle.
-						sThrottle.fAirMtr1Throttle -= 500;
-						sThrottle.fAirMtr3Throttle += 500;
+						sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr3Throttle += g_ui32ThrottleIncrement;
 #else
-						sThrottle.fAirMtr1Throttle -= 500;
-						sThrottle.fAirMtr3Throttle += 500;
-						sThrottle.fAirMtr4Throttle += 500;
-						sThrottle.fAirMtr6Throttle -= 500;
+						sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr3Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr4Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr6Throttle -= g_ui32ThrottleIncrement;
 #endif
 						if (g_PrintFlag) {
 							UARTprintf("Neg Pitch and Pull Down\r\n");
@@ -2271,13 +2283,13 @@ void UpdateTrajectory(void) {
 #if APOPHIS
 						//
 						// "Pull Up", increase front motor throttle and decrease back motor throttle.
-						sThrottle.fAirMtr1Throttle += 500;
-						sThrottle.fAirMtr3Throttle -= 500;
+						sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr3Throttle -= g_ui32ThrottleIncrement;
 #else
-						sThrottle.fAirMtr1Throttle += 500;
-						sThrottle.fAirMtr3Throttle -= 500;
-						sThrottle.fAirMtr4Throttle -= 500;
-						sThrottle.fAirMtr6Throttle += 500;
+						sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr3Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr4Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr6Throttle += g_ui32ThrottleIncrement;
 #endif
 						if (g_PrintFlag) {
 							UARTprintf("Pos Pitch and Pull Up\r\n");
@@ -2290,13 +2302,13 @@ void UpdateTrajectory(void) {
 #if APOPHIS
 						//
 						// "Pull Down", decrease front motor throttle and increase back motor throttle.
-						sThrottle.fAirMtr1Throttle -= 500;
-						sThrottle.fAirMtr3Throttle += 500;
+						sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr3Throttle += g_ui32ThrottleIncrement;
 #else
-						sThrottle.fAirMtr1Throttle -= 500;
-						sThrottle.fAirMtr3Throttle += 500;
-						sThrottle.fAirMtr4Throttle += 500;
-						sThrottle.fAirMtr6Throttle -= 500;
+						sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr3Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr4Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr6Throttle -= g_ui32ThrottleIncrement;
 #endif
 						if (g_PrintFlag) {
 							UARTprintf("Pos Pitch and Pull Down\r\n");
@@ -2315,11 +2327,11 @@ void UpdateTrajectory(void) {
 #if APOPHIS
 						//
 						// "Roll right", increase left motor throttle and decrease right motor throttle.
-						sThrottle.fAirMtr2Throttle -= 500;
-						sThrottle.fAirMtr4Throttle += 500;
+						sThrottle.fAirMtr2Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr4Throttle += g_ui32ThrottleIncrement;
 #else
-						sThrottle.fAirMtr2Throttle -= 500;
-						sThrottle.fAirMtr5Throttle += 500;
+						sThrottle.fAirMtr2Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr5Throttle += g_ui32ThrottleIncrement;
 #endif
 						if (g_PrintFlag) {
 							UARTprintf("Neg Roll and Roll Right\r\n");
@@ -2332,11 +2344,11 @@ void UpdateTrajectory(void) {
 #if APOPHIS
 						//
 						// "Roll Left", increase right motor throttle and decrease left motor throttle.
-						sThrottle.fAirMtr2Throttle += 500;
-						sThrottle.fAirMtr4Throttle -= 500;
+						sThrottle.fAirMtr2Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr4Throttle -= g_ui32ThrottleIncrement;
 #else
-						sThrottle.fAirMtr2Throttle += 500;
-						sThrottle.fAirMtr5Throttle -= 500;
+						sThrottle.fAirMtr2Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr5Throttle -= g_ui32ThrottleIncrement;
 #endif
 						if (g_PrintFlag) {
 							UARTprintf("Neg Roll and Roll Left\r\n");
@@ -2349,11 +2361,11 @@ void UpdateTrajectory(void) {
 #if APOPHIS
 						//
 						// "Roll Right", increase left motor throttle and decrease right motor throttle.
-						sThrottle.fAirMtr2Throttle -= 500;
-						sThrottle.fAirMtr4Throttle += 500;
+						sThrottle.fAirMtr2Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr4Throttle += g_ui32ThrottleIncrement;
 #else
-						sThrottle.fAirMtr2Throttle -= 500;
-						sThrottle.fAirMtr5Throttle += 500;
+						sThrottle.fAirMtr2Throttle -= g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr5Throttle += g_ui32ThrottleIncrement;
 #endif
 						if (g_PrintFlag) {
 							UARTprintf("Pos Roll and Roll Right\r\n");
@@ -2367,11 +2379,11 @@ void UpdateTrajectory(void) {
 #if APOPHIS
 						//
 						// "Roll Left", decrease left motor throttle and increase right motor throttle.
-						sThrottle.fAirMtr2Throttle += 500;
-						sThrottle.fAirMtr4Throttle -= 500;
+						sThrottle.fAirMtr2Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr4Throttle -= g_ui32ThrottleIncrement;
 #else
-						sThrottle.fAirMtr2Throttle += 500;
-						sThrottle.fAirMtr5Throttle -= 500;
+						sThrottle.fAirMtr2Throttle += g_ui32ThrottleIncrement;
+						sThrottle.fAirMtr5Throttle -= g_ui32ThrottleIncrement;
 #endif
 						if (g_PrintFlag) {
 							UARTprintf("Pos Roll and Roll Left\r\n");
@@ -2380,18 +2392,23 @@ void UpdateTrajectory(void) {
 				}
 
 				//
-				// TODO: What about yaw?
+				// TODO: Check yaw calculations.
 				if (i32Yaw == 1) {
 					//
 					// User is pressing right bumper. Rotate right (clockwise from above).
-
+                    sThrottle.fAirMtr1Throttle += 5 * g_ui32ThrottleIncrement;
+                    sThrottle.fAirMtr3Throttle += 5 * g_ui32ThrottleIncrement;
+                    sThrottle.fAirMtr2Throttle -= 5 * g_ui32ThrottleIncrement;
+                    sThrottle.fAirMtr4Throttle -= 5 * g_ui32ThrottleIncrement;
 
 
 				} else if (i32Yaw == -1) {
 					//
 					// User is pressing left bumper. Rotate left (counter-clockwise from above).
-					// TODO: Logic to make the vehicle rotate left.
-				}
+                    sThrottle.fAirMtr1Throttle -= 5 * g_ui32ThrottleIncrement;
+                    sThrottle.fAirMtr3Throttle -= 5 * g_ui32ThrottleIncrement;
+                    sThrottle.fAirMtr2Throttle += 5 * g_ui32ThrottleIncrement;
+                    sThrottle.fAirMtr4Throttle += 5 * g_ui32ThrottleIncrement;				}
 			}
 #endif
 		}
@@ -2410,11 +2427,9 @@ void UpdateTrajectory(void) {
 					sThrottle.fAirMtr5Throttle);
 			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6,
 					sThrottle.fAirMtr6Throttle);
-		}
 #endif
-
-
-	} else {
+	}
+ else {
 		//
 		// Check if radio is sending good data.
 		if (sStatus.bTargetSet) {

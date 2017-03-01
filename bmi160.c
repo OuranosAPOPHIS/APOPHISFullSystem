@@ -181,23 +181,35 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
     txBuffer[1] = BMI160_MAG_DIRECT_ENABLE;
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+    SysCtlDelay(sysClockSpeed / 500);
+
     //
     // Reset the magnetometer.
     txBuffer[0] = BMI160_MAG_IF + 0x04;
     txBuffer[1] = BMM150_SOFT_RESET | BMM150_SLEEP_STARTUP;
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    SysCtlDelay(sysClockSpeed / 500);
+
     txBuffer[0] = BMI160_MAG_IF + 0x03;
     txBuffer[1] = BMM150_RESET_REG;
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    SysCtlDelay(sysClockSpeed / 500);
 
     //
     // Configure the magnetometer for 25 Hz operation and Normal mode.
     txBuffer[0] = BMI160_MAG_IF + 0x04;
     txBuffer[1] = BMM150_DATA_RATE_25_HZ | BMM150_NORMAL_MODE;
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    SysCtlDelay(sysClockSpeed / 500);
+
     txBuffer[0] = BMI160_MAG_IF + 0x03;
     txBuffer[1] = BMM150_CONFIG_REG;
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    SysCtlDelay(sysClockSpeed / 500);
 
     //
     // Set up the interface with the magnetometer.
@@ -208,6 +220,8 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
     txBuffer[0] = BMI160_MAG_IF + 0x02;
     txBuffer[1] = BMM150_DATA_REG;
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    SysCtlDelay(sysClockSpeed / 500);
 
 #if DEBUG
     //
@@ -255,7 +269,8 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
 
     //
     // Write these values to the device.
-    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    I2CBurstWrite(I2C_base, BMI160_ADDRESS, 4, txBuffer);
+    SysCtlDelay(sysClockSpeed / 500);
 
     //
     // Enable INT1 on the device as the data ready pin.
@@ -265,15 +280,17 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
     //
     // Write these values to the device.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    SysCtlDelay(sysClockSpeed / 500);
 
     //
     // Enable INT1 on the device as the data ready pin.
     txBuffer[0] = BMI160_INT_ENABLE + 0x02;
-    txBuffer[1] = 0x00; // 0x00 to register 0x51
+    txBuffer[1] = 0x00; // 0x00 to register 0x52
 
     //
     // Write these values to the device.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    SysCtlDelay(sysClockSpeed / 500);
 
 #if DEBUG
     //
@@ -290,6 +307,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
     //
     // Write these values to the device.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    SysCtlDelay(sysClockSpeed / 500);
 
     //
     // Configure INT1.
@@ -299,6 +317,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
     //
     // Write these values to the device.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    SysCtlDelay(sysClockSpeed / 500);
 
     //
     // Configure INT1.
@@ -308,6 +327,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
     //
     // Write these values to the device.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    SysCtlDelay(sysClockSpeed / 500);
 
 #if DEBUG
     //
@@ -324,6 +344,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
     //
     // Write these values to the device.
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+    SysCtlDelay(sysClockSpeed / 500);
 
     //
     // Now get the offset values from the device for proper calibration.
