@@ -3,6 +3,7 @@
  * Project: Aerial Platform for Overland Haul and Import System (APOPHIS)
  *
  *  Created On: Jan 20, 2017
+ *  Last Updated: March 2, 2017
  *      Author(s): Brandon Klefman
  *
  *      Purpose: Flight computer for the APOPHIS platform.
@@ -66,7 +67,6 @@
 #define AIRMTRS_ACTIVATED true
 
 #define ONEG 16384
-#define BYPASS false
 #define SPEEDIS120MHZ true
 
 //*****************************************************************************
@@ -446,7 +446,6 @@ int main(void) {
 #if IMU_ACTIVATED
 	InitIMU(g_SysClockSpeed, g_offsetData);
 
-#if !BYPASS
 	//
 	// Get the initial reading of the gyro and accel to calculate a bias.
 	while (bBiasCalcBad) {
@@ -531,8 +530,6 @@ int main(void) {
 	}
 #endif
 
-#endif
-
 	//
 	// Initialize the state of the system.
 	sStatus.bFlyOrDrive = false;
@@ -567,7 +564,7 @@ int main(void) {
 
 	//
 	// Before starting program, wait for a button press on either switch.
-	UARTprintf("Initialization Complete!\r\nPress left button to start.");
+	UARTprintf("Initialization Complete!\r\nPress left button to start.\r\n");
 
 	TurnOnLED(5);
 
@@ -598,6 +595,10 @@ int main(void) {
 	PWMGenEnable(PWM0_BASE, PWM_GEN_0);
 	PWMGenEnable(PWM0_BASE, PWM_GEN_1);
 	PWMGenEnable(PWM0_BASE, PWM_GEN_2);
+
+	//
+	// Turn on the timer for the UpdateTrajectory().
+	TimerEnable(UPDATE_TIMER, TIMER_B);
 
 #if !APOPHIS
 	//
@@ -695,19 +696,9 @@ int main(void) {
 		if (g_SendPacket && sStatus.bRadioConnected)
 			SendPacket();
 #endif
-
-#if AIRMTRS_ACTIVATED
-		//
-		// Update the trajectory.
-		if (!sStatus.bRadioConnected)
-			sStatus.bMode = true;
-		UpdateTrajectory();
-#endif
-
 	}
 	//
 	// Program ending. Do any clean up that's needed.
-
 	UARTprintf("Goodbye!\r\n");
 
 	I2CMasterDisable(BOOST_I2C);
@@ -1235,6 +1226,7 @@ void RadioTimeoutIntHandler(void) {
 	//
 	// Set the new status of the platform.
 	sStatus.bRadioConnected = false;
+	sStatus.bMode = true;
 }
 
 //*****************************************************************************
@@ -2079,13 +2071,29 @@ void ProcessIMUData(void) {
 
 		//
 		// Loop counter print once per second.
-		if (g_loopCount && g_PrintRawBMIData) {
+		if (g_PrintRawBMIData && g_loopCount) {
 			UARTprintf("Accelx = %d\r\nAccely = %d\r\n", accelIntData[0],
 					accelIntData[1]);
 			UARTprintf("Accelz = %d\r\n", accelIntData[2]);
 			UARTprintf("Gyrox = %d\r\nGyroy = %d\r\n", g_gyroDataRaw[0],
 					g_gyroDataRaw[1]);
 			UARTprintf("Gyroz = %d\r\n", g_gyroDataRaw[2]);
+
+			UARTprintf("Magx = %d\r\nMagy = %d\r\n", ui8MagData[0], ui8MagData[1]);
+			UARTprintf("Magz = %d\r\n", ui8MagData[2]);
+		}
+
+		if (g_loopCount)
+		{
+			//
+			// Blink the LED 1 to indicate sensor is working.
+			if (g_LED1On) {
+				TurnOffLED(1);
+				g_LED1On = false;
+			} else {
+				TurnOnLED(1);
+				g_LED1On = true;
+			}
 
 			//
 			// Reset loop count.
@@ -2101,16 +2109,6 @@ void ProcessIMUData(void) {
 	//
 	// Reset the flag
 	g_IMUDataFlag = false;
-
-	//
-	// Blink the LED 1 to indicate sensor is working.
-	if (g_LED1On) {
-		TurnOffLED(1);
-		g_LED1On = false;
-	} else {
-		TurnOnLED(1);
-		g_LED1On = true;
-	}
 }
 
 //*****************************************************************************
@@ -2232,7 +2230,7 @@ void UpdateTrajectory(void) {
 				// Calculate the roll, pitch and yaw.
 				fDesiredRoll = g_sRxPack.sControlPacket.roll / 100.0f * 25.0f;
 				fDesiredPitch = g_sRxPack.sControlPacket.pitch / 100.0f * 25.0f;
-#if !BYPASS
+
 				//
 				// Check if the pitch error is less than 0.5 or -0.5.
 				if (((sStatus.fPitch - fDesiredPitch) > 0.5f)
@@ -2410,7 +2408,6 @@ void UpdateTrajectory(void) {
                     sThrottle.fAirMtr2Throttle += 5 * g_ui32ThrottleIncrement;
                     sThrottle.fAirMtr4Throttle += 5 * g_ui32ThrottleIncrement;				}
 			}
-#endif
 		}
 			//
 			// Set the new throttles for the motors.

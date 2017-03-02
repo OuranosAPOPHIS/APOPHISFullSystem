@@ -64,6 +64,7 @@ extern void BMI160IntHandler(void);
 extern void BME280IntHandler(void);
 extern void RadioTimeoutIntHandler(void);
 extern void DCMUpdateTimer(void);
+extern void UpdateTrajectory(void);
 
 /*
  * LED Initialization function.
@@ -627,8 +628,15 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation)
     // Configure and enable the timer.
     //
     // Configure the timer to run at 25 Hz.
+    TimerClockSourceSet(DCM_TIMER, TIMER_CLOCK_PIOSC);
     TimerConfigure(DCM_TIMER, TIMER_CFG_PERIODIC);
-    TimerLoadSet(DCM_TIMER, TIMER_A, SysClockSpeed / DCM_UPDATE_RATE);
+    TimerLoadSet(DCM_TIMER, TIMER_A, 16000000 / DCM_UPDATE_RATE);
+
+    //
+    // Configure and enable the timer for the UpdateTrajectory.
+    // Configure the timer to run at 100 Hz.
+    TimerConfigure(UPDATE_TIMER, TIMER_CFG_PERIODIC);
+    TimerLoadSet(UPDATE_TIMER, TIMER_A, 16000000 / UPDATE_TRAJECTORY_RATE);
 
     //
     // Configure the interrupts for the timer.
@@ -638,15 +646,22 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation)
     TimerIntRegister(DCM_TIMER, TIMER_A, DCMUpdateTimer);
 
     //
+    // Configure the interrupts for the timer.
+    TimerIntClear(UPDATE_TIMER, TIMER_TIMB_TIMEOUT);
+    TimerIntEnable(UPDATE_TIMER, TIMER_TIMB_TIMEOUT);
+    IntEnable(UPDATE_TIMER_INT);
+    TimerIntRegister(UPDATE_TIMER, TIMER_B, UpdateTrajectory);
+
+    //
     // Before calling the BMI160 initialize function, make sure the I2C
     // bus is not busy.
     while(I2CMasterBusBusy(BOOST_I2C));
 
     //
-    // Initialize the BMI160 to have a 25Hz update rate for the
-    // accelerometer and gyro and 16 Hz for the magnetometer,
+    // Initialize the BMI160 to have a 100Hz update rate for the
+    // accelerometer and gyro and 30 Hz for the magnetometer,
     // +/-2g setting on the accelerometer and 2000 deg/s for the gyro.
-    InitBMI160(BOOST_I2C, BMI160_ACC_25_HZ, BMI160_ACC_RANGE_2G, BMI160_GYR_25_HZ,
+    InitBMI160(BOOST_I2C, BMI160_ACC_100_HZ, BMI160_ACC_RANGE_2G, BMI160_GYR_100_HZ,
                BMI160_GYR_RATE_2000, BMI160_MAG_31_HZ, offsetCompensation, SysClockSpeed);
 
     //

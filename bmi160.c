@@ -200,7 +200,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
     //
     // Configure the magnetometer for 25 Hz operation and Normal mode.
     txBuffer[0] = BMI160_MAG_IF + 0x04;
-    txBuffer[1] = BMM150_DATA_RATE_25_HZ | BMM150_NORMAL_MODE;
+    txBuffer[1] = BMM150_DATA_RATE_30_HZ | BMM150_NORMAL_MODE;
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
     SysCtlDelay(sysClockSpeed / 500);
