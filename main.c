@@ -1953,12 +1953,12 @@ void DeactivateSolenoids(void) {
 void SendPacket(void) {
 	int n;
 
-	g_Pack.pack.velX = 10;
-	g_Pack.pack.velY = 20;
-	g_Pack.pack.velZ = 30;
-	g_Pack.pack.posX = 40;
-	g_Pack.pack.posY = 50;
-	g_Pack.pack.posZ = 60;
+	g_Pack.pack.velX = g_fGyroData[0];
+	g_Pack.pack.velY = g_fGyroData[1];
+	g_Pack.pack.velZ = g_fGyroData[2];
+	g_Pack.pack.posX = g_fMagData[0];
+	g_Pack.pack.posY = g_fMagData[1];
+	g_Pack.pack.posZ = g_fMagData[2];
 
 	//
 	// Current orientation.
