@@ -62,6 +62,7 @@ extern void Timer1BInterrupt(void);
 extern void SolenoidInterrupt(void);
 extern void BMI160IntHandler(void);
 extern void BME280IntHandler(void);
+extern void SendPacket(void);
 extern void RadioTimeoutIntHandler(void);
 extern void DCMUpdateTimer(void);
 extern void UpdateTrajectory(void);
@@ -185,19 +186,32 @@ void InitRadio(uint32_t SysClockSpeed)
     //
     // Set up a timer, to detect when radio signal is lost.
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER5);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 
     //
-    // Configure the timer to timeout after 333 milliseconds (3Hz)
-    // and to be periodic.
+    // Configure the timer for sending radio packets.
     TimerConfigure(RADIO_TIMER, TIMER_CFG_PERIODIC);
-    TimerLoadSet(RADIO_TIMER, TIMER_A, SysClockSpeed / 3);
+    TimerLoadSet(RADIO_TIMER, TIMER_A, SysClockSpeed / RADIO_TIMER_RATE);
 
     //
     // Configure the interrupts for the timer.
     TimerIntClear(RADIO_TIMER, TIMER_TIMA_TIMEOUT);
     TimerIntEnable(RADIO_TIMER, TIMER_TIMA_TIMEOUT);
     IntEnable(RADIO_TIMER_INT);
-    TimerIntRegister(RADIO_TIMER, TIMER_A, RadioTimeoutIntHandler);
+    TimerIntRegister(RADIO_TIMER, TIMER_A, SendPacket);
+
+    //
+    // Configure the timer for radio timeout.
+    // This will detect loss of radio communication.
+    TimerConfigure(RADIO_TIMER_CHECK, TIMER_CFG_PERIODIC);
+    TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, SysClockSpeed / RADIO_TIMER_RATE * 2);
+
+    //
+    // Configure the interrupts for the timer.
+    TimerIntClear(RADIO_TIMER_CHECK, TIMER_TIMA_TIMEOUT);
+    TimerIntEnable(RADIO_TIMER_CHECK, TIMER_TIMA_TIMEOUT);
+    IntEnable(RADIO_TIMER_CHECK_INT);
+    TimerIntRegister(RADIO_TIMER_CHECK, TIMER_A, RadioTimeoutIntHandler);
 
     //
     // Initialization complete. Print to console.

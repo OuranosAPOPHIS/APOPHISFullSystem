@@ -56,6 +56,8 @@ extern uint32_t __STACK_TOP;
 //*****************************************************************************
 // To be added by user
 extern void SPIntHandler(void);
+extern void TurnOnLED(int numLED);
+extern void TurnOffLED(int numLED);
 
 //*****************************************************************************
 //
@@ -254,7 +256,15 @@ FaultISR(void)
     //
     while(1)
     {
+        int i = 0;
 
+        for (i = 0; i < 2400000; i++) {}
+
+        TurnOnLED(5);
+
+        for (i = 0; i < 2400000; i++) {}
+
+        TurnOffLED(5);
     }
 }
 

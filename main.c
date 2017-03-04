@@ -178,11 +178,6 @@ uint32_t g_SysTickCount = 0;
 bool g_LED4On = false;
 
 //
-// Variable to send data to the ground station every second. Triggered by
-// SysTickIntHandler().
-bool g_SendPacket = false;
-
-//
 // Variable to store the system clock speed.
 uint32_t g_SysClockSpeed;
 
@@ -272,7 +267,7 @@ float g_fMagLSB = 16;
 //
 // Offset compensation data for the accel and gyro.
 uint8_t g_offsetData[7] = { 0 };
-uint16_t g_Bias[6] = { 0 };
+uint16_t g_GyroBias[6] = { 0 };
 
 //
 // Used as global storage for the gyro data.
@@ -332,8 +327,10 @@ int32_t *g_p_t_fine = &g_t_fine;
 //*****************************************************************************
 int main(void) {
 
-	bool bBiasCalcBad = true;
-
+    int numCalcs = 0;
+    int index, j;
+    uint32_t ui32Sum[3] = { 0 };
+    uint16_t bias[3][50] = { 0 };
 	uint32_t speed = 0;
 
 	//
@@ -446,88 +443,44 @@ int main(void) {
 #if IMU_ACTIVATED
 	InitIMU(g_SysClockSpeed, g_offsetData);
 
-	//
-	// Get the initial reading of the gyro and accel to calculate a bias.
-	while (bBiasCalcBad) {
-		int numCalcs = 0;
-		int index, j;
-		uint32_t ui32Sum[6] = { 0 };
-		uint16_t bias[6][50] = { 0 };
-		while (numCalcs < 50) {
-			if (g_IMUDataFlag) {
-				uint8_t status;
-				uint8_t IMUData[12] = { 0 };
+    while (numCalcs < 50)
+    {
+        if (g_IMUDataFlag)
+        {
+            uint8_t status;
+            uint8_t IMUData[6] = { 0 };
 
-				//
-				// First check the status for which data is ready.
-				I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
+            //
+            // First check the status for which data is ready.
+            I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
 
-				//
-				// Check what status returned.
-				if ((status & 0xC0) == (BMI160_ACC_RDY | BMI160_GYR_RDY)) {
-					//
-					// Then get the data for both the accel and gyro.
-					I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 12,
-							IMUData);
+            //
+            // Check what status returned.
+            if ((status & 0x40) == (BMI160_GYR_RDY))
+            {
+                //
+                // Then get the data for both the accel and gyro.
+                I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 6, IMUData);
 
-					//
-					// Capture the gyro data.
-					bias[3][numCalcs] = ((IMUData[1] << 8) + IMUData[0]);
-					bias[4][numCalcs] = ((IMUData[3] << 8) + IMUData[2]);
-					bias[5][numCalcs] = ((IMUData[5] << 8) + IMUData[4]);
+                //
+                // Capture the gyro data.
+                bias[0][numCalcs] = ((IMUData[1] << 8) + IMUData[0]);
+                bias[1][numCalcs] = ((IMUData[3] << 8) + IMUData[2]);
+                bias[2][numCalcs] = ((IMUData[5] << 8) + IMUData[4]);
 
-					//
-					// Capture the accel data.
-					bias[0][numCalcs] = ((IMUData[7] << 8) + IMUData[6]);
-					bias[1][numCalcs] = ((IMUData[9] << 8) + IMUData[8]);
-					bias[2][numCalcs] = ((IMUData[11] << 8) + IMUData[10]);
+                numCalcs++;
+            }
+        }
+    }
 
-					numCalcs++;
-				}
-			}
-		}
+    //
+    // Calculate the bias.
+    for (index = 0; index < numCalcs; index++)
+        for (j = 0; j < 3; j++)
+            ui32Sum[j] += bias[j][index];
 
-		//
-		// Calculate the bias.
-		for (index = 0; index < numCalcs; index++) {
-			for (j = 0; j < 6; j++) {
-				ui32Sum[j] += bias[j][index];
-			}
-		}
-
-		//
-		// Actual bias.
-		for (index = 0; index < 6; index++) {
-			g_Bias[index] = ui32Sum[index] / numCalcs;
-		}
-
-		//
-		// Check if the accel results are good data.
-		if ((g_Bias[0] < ONEG / 20) || (g_Bias[0] > (65536 - ONEG / 20))) {
-			//
-			// Good data, x-axis is flat. Now check y-axis.
-			if ((g_Bias[1] < ONEG / 20) || (g_Bias[1] > (65536 - ONEG / 20))) {
-				//
-				// Good data, y-axis is flat. Now check z-axis.
-				if ((g_Bias[2] > (ONEG - ONEG / 20))
-						|| (g_Bias[2] < (ONEG + ONEG / 20))) {
-					//
-					// Remove the 1G portion of the bias for the z-axis.
-					g_Bias[2] -= ONEG;
-
-					//
-					// All good data.
-					bBiasCalcBad = false;
-
-					UARTprintf("Accelerometer calibration successful!\r\n");
-				} else
-					UARTprintf(
-							"BAD CALIBRATION! Z-axis is not pointing up!!\r\n");
-			} else
-				UARTprintf("BAD CALIBRATION X and Y axes are not flat!!\r\n");
-		} else
-			UARTprintf("BAD CALIBRATION X and Y axes are not flat!!\r\n");
-	}
+    for (index = 0; index < 3; index++)
+        g_GyroBias[index] = ui32Sum[index] / numCalcs;
 #endif
 
 	//
@@ -609,8 +562,9 @@ int main(void) {
 
 #if (RADIO_ACTIVATED)
 	//
-	// Activate the radio connection timer.
-	TimerEnable(RADIO_TIMER, TIMER_A);
+	// Activate the radio timers.
+    TimerEnable(RADIO_TIMER, TIMER_A);
+	TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
 #endif
 
 	//
@@ -689,13 +643,6 @@ int main(void) {
 			// Calculate pressure in float form (Pascals).
 			g_Pressure = presInt / 256.0f;
 		}
-
-		//
-		// Check if it is time to send a packet to the ground station.
-#if RADIO_ACTIVATED
-		if (g_SendPacket && sStatus.bRadioConnected)
-			SendPacket();
-#endif
 	}
 	//
 	// Program ending. Do any clean up that's needed.
@@ -734,10 +681,6 @@ void SysTickIntHandler(void) {
 
 			g_LED4On = true;
 		}
-
-		//
-		// Trigger sending a radio packet to the ground station.
-		g_SendPacket = true;
 
 		//
 		// Trigger printing accel and gyro data to PC terminal.
@@ -821,7 +764,7 @@ void RadioIntHandler(void) {
 					//
 					// Good radio connection. Reset the timer and set the status.
 					sStatus.bRadioConnected = true;
-					TimerLoadSet(RADIO_TIMER, TIMER_A, g_SysClockSpeed / 3);
+					TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, g_SysClockSpeed / 3);
 					break;
 				}
 			} else {
@@ -1209,7 +1152,8 @@ void BME280IntHandler(void) {
 
 //*****************************************************************************
 //
-// Interrupt handler for the BME280 sensor unit.
+// Radio timeout interrupt. If this is reached, then we have lost
+// communication.
 //
 //*****************************************************************************
 void RadioTimeoutIntHandler(void) {
@@ -1217,11 +1161,11 @@ void RadioTimeoutIntHandler(void) {
 
 	//
 	// Get the interrupt status.
-	ui32Status = TimerIntStatus(RADIO_TIMER, true);
+	ui32Status = TimerIntStatus(RADIO_TIMER_CHECK, true);
 
 	//
 	// Clear the interrupt.
-	TimerIntClear(RADIO_TIMER, ui32Status);
+	TimerIntClear(RADIO_TIMER_CHECK, ui32Status);
 
 	//
 	// Set the new status of the platform.
@@ -1946,65 +1890,76 @@ void DeactivateSolenoids(void) {
 
 //*****************************************************************************
 //
-// This function will drive the solenoid enable pins to a low state. This
-// function should only be called by the timer 4 interrupt.
+// This function will send a packet to the ground station, if the radio is
+// connected, it will be called by Timer 0 - Timer A at the rate specified.
 //
 //*****************************************************************************
 void SendPacket(void) {
-	int n;
 
-	g_Pack.pack.velX = g_fGyroData[0];
-	g_Pack.pack.velY = g_fGyroData[1];
-	g_Pack.pack.velZ = g_fGyroData[2];
-	g_Pack.pack.posX = g_fMagData[0];
-	g_Pack.pack.posY = g_fMagData[1];
-	g_Pack.pack.posZ = g_fMagData[2];
+    int n;
+    uint32_t ui32Status;
 
-	//
-	// Current orientation.
-	g_Pack.pack.roll = sStatus.fRoll;
-	g_Pack.pack.pitch = sStatus.fPitch;
-	g_Pack.pack.yaw = sStatus.fYaw;
+    //
+    // Get the interrupt status.
+    ui32Status = TimerIntStatus(RADIO_TIMER, true);
 
-	//
-	// Mode of operation.
-	if (sStatus.bFlyOrDrive) {
-		g_Pack.pack.movement = 'F';
-		g_Pack.pack.amtr1 = true;
-		g_Pack.pack.amtr2 = true;
-		g_Pack.pack.amtr3 = true;
-		g_Pack.pack.amtr4 = true;
-		g_Pack.pack.gndmtr1 = false;
-		g_Pack.pack.gndmtr2 = false;
-	} else {
-		g_Pack.pack.movement = 'D';
-		g_Pack.pack.gndmtr1 = true;
-		g_Pack.pack.gndmtr2 = true;
-		g_Pack.pack.amtr1 = false;
-		g_Pack.pack.amtr2 = false;
-		g_Pack.pack.amtr3 = false;
-		g_Pack.pack.amtr4 = false;
+    //
+    // Clear the interrupt.
+    TimerIntClear(RADIO_TIMER, ui32Status);
+
+    if (sStatus.bRadioConnected)
+    {
+        g_Pack.pack.velX = g_fGyroData[0];
+        g_Pack.pack.velY = g_fGyroData[1];
+        g_Pack.pack.velZ = g_fGyroData[2];
+        g_Pack.pack.posX = g_fMagData[0];
+        g_Pack.pack.posY = g_fMagData[1];
+        g_Pack.pack.posZ = g_fMagData[2];
+
+        //
+        // Current orientation.
+        g_Pack.pack.roll = sStatus.fRoll;
+        g_Pack.pack.pitch = sStatus.fPitch;
+        g_Pack.pack.yaw = sStatus.fYaw;
+
+        //
+        // Mode of operation.
+        if (sStatus.bFlyOrDrive)
+        {
+            g_Pack.pack.movement = 'F';
+            g_Pack.pack.amtr1 = true;
+            g_Pack.pack.amtr2 = true;
+            g_Pack.pack.amtr3 = true;
+            g_Pack.pack.amtr4 = true;
+            g_Pack.pack.gndmtr1 = false;
+            g_Pack.pack.gndmtr2 = false;
+        }
+        else
+        {
+            g_Pack.pack.movement = 'D';
+            g_Pack.pack.gndmtr1 = true;
+            g_Pack.pack.gndmtr2 = true;
+            g_Pack.pack.amtr1 = false;
+            g_Pack.pack.amtr2 = false;
+            g_Pack.pack.amtr3 = false;
+            g_Pack.pack.amtr4 = false;
+        }
+
+        //
+        // Status bits.
+        g_Pack.pack.uS1 = false;
+        g_Pack.pack.uS2 = false;
+        g_Pack.pack.uS3 = false;
+        g_Pack.pack.uS4 = false;
+        g_Pack.pack.uS5 = false;
+        g_Pack.pack.uS6 = false;
+        g_Pack.pack.payBay = sStatus.bPayDeployed;
+
+        //
+        // Send the data over the radio.
+        for (n = 0; n < sizeof(g_Pack.str); n++)
+            UARTCharPut(RADIO_UART, g_Pack.str[n]);
 	}
-
-	//
-	// Status bits.
-	g_Pack.pack.uS1 = false;
-	g_Pack.pack.uS2 = false;
-	g_Pack.pack.uS3 = false;
-	g_Pack.pack.uS4 = false;
-	g_Pack.pack.uS5 = false;
-	g_Pack.pack.uS6 = false;
-	g_Pack.pack.payBay = sStatus.bPayDeployed;
-
-	//
-	// Send the data over the radio.
-	for (n = 0; n < sizeof(g_Pack.str); n++) {
-		UARTCharPut(RADIO_UART, g_Pack.str[n]);
-	}
-
-	//
-	// Reset the flag.
-	g_SendPacket = false;
 }
 
 //*****************************************************************************
@@ -2017,9 +1972,6 @@ void ProcessIMUData(void) {
 	uint8_t IMUData[20]; // raw accel and gyro data
 	int16_t accelIntData[3];
 	uint8_t ui8MagData[4];
-	int16_t *p_accelX = &accelIntData[0];
-	int16_t *p_accelY = &accelIntData[1];
-	int16_t *p_accelZ = &accelIntData[2];
 
 	//
 	// First check the status for which data is ready.
@@ -2047,9 +1999,9 @@ void ProcessIMUData(void) {
 
 		//
 		// Set the gyro data to the global variables.
-		g_gyroDataRaw[0] = ((IMUData[9] << 8) + IMUData[8]) - g_Bias[3];
-		g_gyroDataRaw[1] = ((IMUData[11] << 8) + IMUData[10]) - g_Bias[4];
-		g_gyroDataRaw[2] = ((IMUData[13] << 8) + IMUData[12]) - g_Bias[5];
+		g_gyroDataRaw[0] = ((IMUData[9] << 8) + IMUData[8]) - g_GyroBias[0];
+		g_gyroDataRaw[1] = ((IMUData[11] << 8) + IMUData[10]) - g_GyroBias[1];
+		g_gyroDataRaw[2] = ((IMUData[13] << 8) + IMUData[12]) - g_GyroBias[2];
 
 		//
 		// Convert data to float.
@@ -2059,9 +2011,9 @@ void ProcessIMUData(void) {
 
 		//
 		// Set the accelerometer data.
-		*p_accelX = ((IMUData[15] << 8) + IMUData[14]) - g_Bias[0];
-		*p_accelY = ((IMUData[17] << 8) + IMUData[16]) - g_Bias[1];
-		*p_accelZ = ((IMUData[19] << 8) + IMUData[18]) - g_Bias[2];
+		accelIntData[0] = ((IMUData[15] << 8) + IMUData[14]);
+		accelIntData[1] = ((IMUData[17] << 8) + IMUData[16]);
+		accelIntData[2] = ((IMUData[19] << 8) + IMUData[18]);
 
 		//
 		// Compute the accel data into floating point values.
@@ -2081,24 +2033,24 @@ void ProcessIMUData(void) {
 
 			UARTprintf("Magx = %d\r\nMagy = %d\r\n", ui8MagData[0], ui8MagData[1]);
 			UARTprintf("Magz = %d\r\n", ui8MagData[2]);
+
+            //
+            // Reset loop count.
+            g_loopCount = false;
 		}
 
-		if (g_loopCount)
-		{
-			//
-			// Blink the LED 1 to indicate sensor is working.
-			if (g_LED1On) {
-				TurnOffLED(1);
-				g_LED1On = false;
-			} else {
-				TurnOnLED(1);
-				g_LED1On = true;
-			}
-
-			//
-			// Reset loop count.
-			g_loopCount = false;
-		}
+        //
+        // Blink the LED 1 to indicate sensor is working.
+        if (g_LED1On)
+        {
+            TurnOffLED(1);
+            g_LED1On = false;
+        }
+        else
+        {
+            TurnOnLED(1);
+            g_LED1On = true;
+        }
 	}
 
 	//
@@ -2117,6 +2069,16 @@ void ProcessIMUData(void) {
 //
 //*****************************************************************************
 void UpdateTrajectory(void) {
+    uint32_t ui32Status;
+
+    //
+    // Get the interrupt status.
+    ui32Status = TimerIntStatus(UPDATE_TIMER, true);
+
+    //
+    // Clear the interrupt.
+    TimerIntClear(UPDATE_TIMER, ui32Status);
+
 	//
 	// TODO: This is where the control law and stuff will go.
 

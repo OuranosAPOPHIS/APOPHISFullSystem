@@ -130,12 +130,17 @@
  * to detect radio communication loss.
  * It will be run at 3 Hz, if it times out,
  * this will indicate that there is no radio
- * signal being received. It will be the radio
- * interrupt handler's responsibility to
- * reset the timer during the interrupt call.
+ * signal being received.
+ * Timer 0 - Timer A will be used to trigger
+ * a radio packet send at the specified
+ * frequency.
  */
-#define RADIO_TIMER TIMER5_BASE
-#define RADIO_TIMER_INT INT_TIMER5A
+#define RADIO_TIMER_CHECK TIMER5_BASE
+#define RADIO_TIMER_CHECK_INT INT_TIMER5A
+
+#define RADIO_TIMER TIMER0_BASE
+#define RADIO_TIMER_INT INT_TIMER0A
+#define RADIO_TIMER_RATE 1
 
 /*
  *  ADC Peripheral Defines for Solar Panels
