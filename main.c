@@ -59,7 +59,7 @@
 #define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
 #define GNDMTRS_ACTIVATED false
-#define SOLARS_ACTIVATED false
+#define SECONDARY_ATTITUDE true
 #define ULTRASONIC_ACTIVATED false
 #define SOLENOIDS_ACTIVATED true
 #define IMU_ACTIVATED true
@@ -267,11 +267,15 @@ float g_fMagLSB = 16;
 //
 // Offset compensation data for the accel and gyro.
 uint8_t g_offsetData[7] = { 0 };
-uint16_t g_GyroBias[6] = { 0 };
+int16_t g_GyroBias[3] = { 0 };
+int16_t g_AccelBias[3] = { 0 };
+
+//
+// Calculated bias for mag from MATLAB in uTeslas.
+int16_t g_MagBias[3] = { 0 }; //{ 23.2604390452978, 4.40368720486817, 41.9678519105233 };
 
 //
 // Used as global storage for the gyro data.
-int16_t g_gyroDataRaw[3];
 float g_fGyroData[3];
 
 //
@@ -327,10 +331,10 @@ int32_t *g_p_t_fine = &g_t_fine;
 //*****************************************************************************
 int main(void) {
 
-    int numCalcs = 0;
-    int index, j;
-    uint32_t ui32Sum[3] = { 0 };
-    uint16_t bias[3][50] = { 0 };
+	int numCalcs = 0;
+	int index, j;
+	int32_t ui32Sum[3] = { 0 };
+	int16_t bias[3][50] = { 0 };
 	uint32_t speed = 0;
 
 	//
@@ -344,10 +348,10 @@ int main(void) {
 	// Set the clocking to run at 120 MHz.
 #if SPEEDIS120MHZ
 	g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN |
-            SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480, 120000000);
+	SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480, 120000000);
 #else
 	g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
-	        SYSCTL_XTAL_16MHZ, 16000000);
+			SYSCTL_XTAL_16MHZ, 16000000);
 #endif
 
 	//
@@ -395,8 +399,10 @@ int main(void) {
 
 	//
 	// Initialize the solar panels if turned on.
-#if SOLARS_ACTIVATED
+#if SECONDARY_ATTITUDE
 	InitSolarPanels();
+
+	InitSecondaryAccel(g_SysClockSpeed);
 #endif
 
 	//
@@ -426,8 +432,8 @@ int main(void) {
 
 	//
 	// Calculate zerothrottle corresponding to 1 ms pulse.
-    speed = (g_SysClockSpeed / PWM_FREQUENCY / 64);
-	g_ui32ZeroThrottle =  (speed * 1 * PWM_FREQUENCY) / 1000;
+	speed = (g_SysClockSpeed / PWM_FREQUENCY / 64);
+	g_ui32ZeroThrottle = (speed * 1 * PWM_FREQUENCY) / 1000;
 	g_ui32MaxThrottle = (speed * 2 * PWM_FREQUENCY) / 1000;
 	g_ui32ThrottleIncrement = g_ui32ZeroThrottle / 50;
 	g_ui32ZeroThrottle += g_ui32ThrottleIncrement * 3;
@@ -443,44 +449,44 @@ int main(void) {
 #if IMU_ACTIVATED
 	InitIMU(g_SysClockSpeed, g_offsetData);
 
-    while (numCalcs < 50)
-    {
-        if (g_IMUDataFlag)
-        {
-            uint8_t status;
-            uint8_t IMUData[6] = { 0 };
+	while (numCalcs < 50) {
+		if (g_IMUDataFlag) {
+			uint8_t status;
+			uint8_t IMUData[6] = { 0 };
 
-            //
-            // First check the status for which data is ready.
-            I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
+			//
+			// First check the status for which data is ready.
+			I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
 
-            //
-            // Check what status returned.
-            if ((status & 0x40) == (BMI160_GYR_RDY))
-            {
-                //
-                // Then get the data for both the accel and gyro.
-                I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 6, IMUData);
+			//
+			// Check what status returned.
+			if ((status & 0x40) == (BMI160_GYR_RDY)) {
+				//
+				// Then get the data for both the accel and gyro.
+				I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 6, IMUData);
 
-                //
-                // Capture the gyro data.
-                bias[0][numCalcs] = ((IMUData[1] << 8) + IMUData[0]);
-                bias[1][numCalcs] = ((IMUData[3] << 8) + IMUData[2]);
-                bias[2][numCalcs] = ((IMUData[5] << 8) + IMUData[4]);
+				//
+				// Capture the gyro data.
+				bias[0][numCalcs] = (((int16_t) IMUData[1] << 8)
+						+ (int8_t) IMUData[0]);
+				bias[1][numCalcs] = (((int16_t) IMUData[3] << 8)
+						+ (int8_t) IMUData[2]);
+				bias[2][numCalcs] = (((int16_t) IMUData[5] << 8)
+						+ (int8_t) IMUData[4]);
 
-                numCalcs++;
-            }
-        }
-    }
+				numCalcs++;
+			}
+		}
+	}
 
-    //
-    // Calculate the bias.
-    for (index = 0; index < numCalcs; index++)
-        for (j = 0; j < 3; j++)
-            ui32Sum[j] += bias[j][index];
+	//
+	// Calculate the bias.
+	for (index = 0; index < numCalcs; index++)
+		for (j = 0; j < 3; j++)
+			ui32Sum[j] += bias[j][index];
 
-    for (index = 0; index < 3; index++)
-        g_GyroBias[index] = ui32Sum[index] / numCalcs;
+	for (index = 0; index < 3; index++)
+		g_GyroBias[index] = ui32Sum[index] / numCalcs;
 #endif
 
 	//
@@ -498,8 +504,8 @@ int main(void) {
 	sThrottle.fAirMtr3Throttle = g_ui32ZeroThrottle;
 	sThrottle.fAirMtr4Throttle = g_ui32ZeroThrottle;
 #if !APOPHIS
-    sThrottle.fAirMtr5Throttle = g_ui32ZeroThrottle;
-    sThrottle.fAirMtr6Throttle = g_ui32ZeroThrottle;
+	sThrottle.fAirMtr5Throttle = g_ui32ZeroThrottle;
+	sThrottle.fAirMtr6Throttle = g_ui32ZeroThrottle;
 #endif
 
 	sThrottle.fGndMtrRWThrottle = 0.0f;
@@ -523,12 +529,12 @@ int main(void) {
 
 	WaitForButtonPress(LEFT_BUTTON);
 
-    TurnOffLED(5);
+	TurnOffLED(5);
 
-    //
-    // Initialize the DCM.
-    CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.5f, 0.3f, 0.2f);
-    g_bDCMStarted = false;
+	//
+	// Initialize the DCM.
+	CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.2f, 0.6f, 0.2f);
+	g_bDCMStarted = false;
 
 	//
 	// Initialization complete. Enable interrupts.
@@ -563,7 +569,7 @@ int main(void) {
 #if (RADIO_ACTIVATED)
 	//
 	// Activate the radio timers.
-    TimerEnable(RADIO_TIMER, TIMER_A);
+	TimerEnable(RADIO_TIMER, TIMER_A);
 	TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
 #endif
 
@@ -693,8 +699,7 @@ void SysTickIntHandler(void) {
 		//
 		// Reset SysTick Count.
 		g_SysTickCount = 0;
-	}
-	else
+	} else
 		g_SysTickCount++;
 }
 
@@ -764,7 +769,8 @@ void RadioIntHandler(void) {
 					//
 					// Good radio connection. Reset the timer and set the status.
 					sStatus.bRadioConnected = true;
-					TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, g_SysClockSpeed / 3);
+					TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
+							g_SysClockSpeed / 3);
 					break;
 				}
 			} else {
@@ -1238,6 +1244,32 @@ void DCMUpdateTimer(void) {
 	sStatus.fYaw *= 57.295779513082320876798154814105f;
 	if (sStatus.fYaw < 0)
 		sStatus.fYaw += 360.0f;
+}
+
+//*****************************************************************************
+//
+// MMA8452Q Interrupt Handler
+//
+//*****************************************************************************
+void MMA8452QIntHandler(void)
+{
+	uint32_t ui32Status;
+
+	//
+	// Get the interrupt status.
+	ui32Status = GPIOIntStatus(MMA8452Q_GPIO_INT_PORT, true);
+
+	//
+	// Clear the interrupt.
+	GPIOIntClear(MMA8452Q_GPIO_INT_PORT, ui32Status);
+
+	//
+	// Check which interrupt fired.
+	if (ui32Status == MMA8452Q_GPIO_INT) {
+		//
+		// IMU data is ready.
+		g_IMUDataFlag = true;
+	}
 }
 
 /*
@@ -1896,69 +1928,65 @@ void DeactivateSolenoids(void) {
 //*****************************************************************************
 void SendPacket(void) {
 
-    int n;
-    uint32_t ui32Status;
+	int n;
+	uint32_t ui32Status;
 
-    //
-    // Get the interrupt status.
-    ui32Status = TimerIntStatus(RADIO_TIMER, true);
+	//
+	// Get the interrupt status.
+	ui32Status = TimerIntStatus(RADIO_TIMER, true);
 
-    //
-    // Clear the interrupt.
-    TimerIntClear(RADIO_TIMER, ui32Status);
+	//
+	// Clear the interrupt.
+	TimerIntClear(RADIO_TIMER, ui32Status);
 
-    if (sStatus.bRadioConnected)
-    {
-        g_Pack.pack.velX = g_fGyroData[0];
-        g_Pack.pack.velY = g_fGyroData[1];
-        g_Pack.pack.velZ = g_fGyroData[2];
-        g_Pack.pack.posX = g_fMagData[0];
-        g_Pack.pack.posY = g_fMagData[1];
-        g_Pack.pack.posZ = g_fMagData[2];
+	if (sStatus.bRadioConnected) {
+		g_Pack.pack.velX = g_fGyroData[0];
+		g_Pack.pack.velY = g_fGyroData[1];
+		g_Pack.pack.velZ = g_fGyroData[2];
+		g_Pack.pack.posX = g_fMagData[0];
+		g_Pack.pack.posY = g_fMagData[1];
+		g_Pack.pack.posZ = g_fMagData[2];
 
-        //
-        // Current orientation.
-        g_Pack.pack.roll = sStatus.fRoll;
-        g_Pack.pack.pitch = sStatus.fPitch;
-        g_Pack.pack.yaw = sStatus.fYaw;
+		//
+		// Current orientation.
+		g_Pack.pack.roll = sStatus.fRoll;
+		g_Pack.pack.pitch = sStatus.fPitch;
+		g_Pack.pack.yaw = sStatus.fYaw;
 
-        //
-        // Mode of operation.
-        if (sStatus.bFlyOrDrive)
-        {
-            g_Pack.pack.movement = 'F';
-            g_Pack.pack.amtr1 = true;
-            g_Pack.pack.amtr2 = true;
-            g_Pack.pack.amtr3 = true;
-            g_Pack.pack.amtr4 = true;
-            g_Pack.pack.gndmtr1 = false;
-            g_Pack.pack.gndmtr2 = false;
-        }
-        else
-        {
-            g_Pack.pack.movement = 'D';
-            g_Pack.pack.gndmtr1 = true;
-            g_Pack.pack.gndmtr2 = true;
-            g_Pack.pack.amtr1 = false;
-            g_Pack.pack.amtr2 = false;
-            g_Pack.pack.amtr3 = false;
-            g_Pack.pack.amtr4 = false;
-        }
+		//
+		// Mode of operation.
+		if (sStatus.bFlyOrDrive) {
+			g_Pack.pack.movement = 'F';
+			g_Pack.pack.amtr1 = true;
+			g_Pack.pack.amtr2 = true;
+			g_Pack.pack.amtr3 = true;
+			g_Pack.pack.amtr4 = true;
+			g_Pack.pack.gndmtr1 = false;
+			g_Pack.pack.gndmtr2 = false;
+		} else {
+			g_Pack.pack.movement = 'D';
+			g_Pack.pack.gndmtr1 = true;
+			g_Pack.pack.gndmtr2 = true;
+			g_Pack.pack.amtr1 = false;
+			g_Pack.pack.amtr2 = false;
+			g_Pack.pack.amtr3 = false;
+			g_Pack.pack.amtr4 = false;
+		}
 
-        //
-        // Status bits.
-        g_Pack.pack.uS1 = false;
-        g_Pack.pack.uS2 = false;
-        g_Pack.pack.uS3 = false;
-        g_Pack.pack.uS4 = false;
-        g_Pack.pack.uS5 = false;
-        g_Pack.pack.uS6 = false;
-        g_Pack.pack.payBay = sStatus.bPayDeployed;
+		//
+		// Status bits.
+		g_Pack.pack.uS1 = false;
+		g_Pack.pack.uS2 = false;
+		g_Pack.pack.uS3 = false;
+		g_Pack.pack.uS4 = false;
+		g_Pack.pack.uS5 = false;
+		g_Pack.pack.uS6 = false;
+		g_Pack.pack.payBay = sStatus.bPayDeployed;
 
-        //
-        // Send the data over the radio.
-        for (n = 0; n < sizeof(g_Pack.str); n++)
-            UARTCharPut(RADIO_UART, g_Pack.str[n]);
+		//
+		// Send the data over the radio.
+		for (n = 0; n < sizeof(g_Pack.str); n++)
+			UARTCharPut(RADIO_UART, g_Pack.str[n]);
 	}
 }
 
@@ -1969,9 +1997,11 @@ void SendPacket(void) {
 //*****************************************************************************
 void ProcessIMUData(void) {
 	uint8_t status;
-	uint8_t IMUData[20]; // raw accel and gyro data
-	int16_t accelIntData[3];
-	uint8_t ui8MagData[4];
+	uint8_t IMUData[20]; // raw accel, gyro and mag data.
+	int16_t i16AccelData[3];
+	int16_t i16GyroData[3];
+	int16_t i8MagData[3];
+	uint16_t ui8MagRHall;
 
 	//
 	// First check the status for which data is ready.
@@ -1986,71 +2016,107 @@ void ProcessIMUData(void) {
 
 		//
 		// Get the mag data.
-		ui8MagData[0] = ((IMUData[1] << 8) + IMUData[0]);
-		ui8MagData[1] = ((IMUData[3] << 8) + IMUData[2]);
-		ui8MagData[2] = ((IMUData[5] << 8) + IMUData[4]);
-		ui8MagData[3] = ((IMUData[7] << 8) + IMUData[6]);
+		i8MagData[0] = (((int16_t) IMUData[1] << 8)
+				+ (int8_t) (IMUData[0] & 0x1f));
+		i8MagData[1] = (((int16_t) IMUData[3] << 8)
+				+ (int8_t) (IMUData[2] & 0x1f));
+		i8MagData[2] = (((int16_t) IMUData[5] << 8)
+				+ (int8_t) (IMUData[4] & 0x7f));
+		ui8MagRHall = (((uint16_t) IMUData[7] << 8) + (IMUData[6] & 0x3f));
 
 		//
-		// Convert to float for DCM.
-		g_fMagData[0] = ui8MagData[0] / g_fMagLSB;
-		g_fMagData[1] = ui8MagData[1] / g_fMagLSB;
-		g_fMagData[2] = ui8MagData[2] / g_fMagLSB;
+		// Convert to float for DCM and convert to teslas.
+		g_fMagData[0] = ((i8MagData[0] / g_fMagLSB) - g_MagBias[0]) / 1e6;
+		g_fMagData[1] = ((i8MagData[1] / g_fMagLSB) - g_MagBias[1]) / 1e6;
+		g_fMagData[2] = ((i8MagData[2] / g_fMagLSB) - g_MagBias[2]) / 1e6;
 
 		//
 		// Set the gyro data to the global variables.
-		g_gyroDataRaw[0] = ((IMUData[9] << 8) + IMUData[8]) - g_GyroBias[0];
-		g_gyroDataRaw[1] = ((IMUData[11] << 8) + IMUData[10]) - g_GyroBias[1];
-		g_gyroDataRaw[2] = ((IMUData[13] << 8) + IMUData[12]) - g_GyroBias[2];
+		i16GyroData[0] = (((int16_t) IMUData[9] << 8) + (int8_t) IMUData[8])
+				- g_GyroBias[0];
+		i16GyroData[1] = (((int16_t) IMUData[11] << 8) + (int8_t) IMUData[10])
+				- g_GyroBias[1];
+		i16GyroData[2] = (((int16_t) IMUData[13] << 8) + (int8_t) IMUData[12])
+				- g_GyroBias[2];
 
 		//
 		// Convert data to float.
-		g_fGyroData[0] = ((float) (g_gyroDataRaw[0])) / g_fGyroLSB;
-		g_fGyroData[1] = ((float) (g_gyroDataRaw[1])) / g_fGyroLSB;
-		g_fGyroData[2] = ((float) (g_gyroDataRaw[2])) / g_fGyroLSB;
+		g_fGyroData[0] = ((float) (i16GyroData[0])) / g_fGyroLSB;
+		g_fGyroData[1] = ((float) (i16GyroData[1])) / g_fGyroLSB;
+		g_fGyroData[2] = ((float) (i16GyroData[2])) / g_fGyroLSB;
 
 		//
 		// Set the accelerometer data.
-		accelIntData[0] = ((IMUData[15] << 8) + IMUData[14]);
-		accelIntData[1] = ((IMUData[17] << 8) + IMUData[16]);
-		accelIntData[2] = ((IMUData[19] << 8) + IMUData[18]);
+		i16AccelData[0] = (((int16_t) IMUData[15] << 8) + (int8_t) IMUData[14]);
+		i16AccelData[1] = (((int16_t) IMUData[17] << 8) + (int8_t) IMUData[16]);
+		i16AccelData[2] = (((int16_t) IMUData[19] << 8) + (int8_t) IMUData[18]);
 
 		//
 		// Compute the accel data into floating point values.
-		g_Pack.pack.accelX = ((float) accelIntData[0]) / g_accelLSBg;
-		g_Pack.pack.accelY = ((float) accelIntData[1]) / g_accelLSBg;
-		g_Pack.pack.accelZ = ((float) accelIntData[2]) / g_accelLSBg;
+		g_Pack.pack.accelX = ((float) i16AccelData[0]) / g_accelLSBg;
+		g_Pack.pack.accelY = ((float) i16AccelData[1]) / g_accelLSBg;
+		g_Pack.pack.accelZ = ((float) i16AccelData[2]) / g_accelLSBg;
 
 		//
 		// Loop counter print once per second.
 		if (g_PrintRawBMIData && g_loopCount) {
-			UARTprintf("Accelx = %d\r\nAccely = %d\r\n", accelIntData[0],
-					accelIntData[1]);
-			UARTprintf("Accelz = %d\r\n", accelIntData[2]);
-			UARTprintf("Gyrox = %d\r\nGyroy = %d\r\n", g_gyroDataRaw[0],
-					g_gyroDataRaw[1]);
-			UARTprintf("Gyroz = %d\r\n", g_gyroDataRaw[2]);
+			UARTprintf("Accelx = %d\r\nAccely = %d\r\n", i16AccelData[0],
+					i16AccelData[1]);
+			UARTprintf("Accelz = %d\r\n", i16AccelData[2]);
+			UARTprintf("Gyrox = %d\r\nGyroy = %d\r\n", i16GyroData[0],
+					i16GyroData[1]);
+			UARTprintf("Gyroz = %d\r\n", i16GyroData[2]);
 
-			UARTprintf("Magx = %d\r\nMagy = %d\r\n", ui8MagData[0], ui8MagData[1]);
-			UARTprintf("Magz = %d\r\n", ui8MagData[2]);
+			UARTprintf("Magx = %d\r\nMagy = %d\r\n", i8MagData[0],
+					i8MagData[1]);
+			UARTprintf("Magz = %d\r\n", i8MagData[2]);
 
-            //
-            // Reset loop count.
-            g_loopCount = false;
+			//
+			// Reset loop count.
+			g_loopCount = false;
 		}
 
-        //
-        // Blink the LED 1 to indicate sensor is working.
-        if (g_LED1On)
-        {
-            TurnOffLED(1);
-            g_LED1On = false;
-        }
-        else
-        {
-            TurnOnLED(1);
-            g_LED1On = true;
-        }
+		//
+		// Blink the LED 1 to indicate sensor is working.
+		if (g_LED1On) {
+			TurnOffLED(1);
+			g_LED1On = false;
+		} else {
+			TurnOnLED(1);
+			g_LED1On = true;
+		}
+	}
+	else if ((status & 0xC0) == (BMI160_ACC_RDY | BMI160_GYR_RDY)) { // Just update the accel and gyro.
+		//
+		// Then get the data for both the accel, gyro and mag
+		I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 12, IMUData);
+
+		//
+		// Set the gyro data to the global variables.
+		i16GyroData[0] = (((int16_t) IMUData[1] << 8) + (int8_t) IMUData[0])
+				- g_GyroBias[0];
+		i16GyroData[1] = (((int16_t) IMUData[3] << 8) + (int8_t) IMUData[2])
+				- g_GyroBias[1];
+		i16GyroData[2] = (((int16_t) IMUData[5] << 8) + (int8_t) IMUData[4])
+				- g_GyroBias[2];
+
+		//
+		// Convert data to float.
+		g_fGyroData[0] = ((float) (i16GyroData[0])) / g_fGyroLSB;
+		g_fGyroData[1] = ((float) (i16GyroData[1])) / g_fGyroLSB;
+		g_fGyroData[2] = ((float) (i16GyroData[2])) / g_fGyroLSB;
+
+		//
+		// Set the accelerometer data.
+		i16AccelData[0] = (((int16_t) IMUData[7] << 8) + (int8_t) IMUData[6]);
+		i16AccelData[1] = (((int16_t) IMUData[9] << 8) + (int8_t) IMUData[8]);
+		i16AccelData[2] = (((int16_t) IMUData[11] << 8) + (int8_t) IMUData[10]);
+
+		//
+		// Compute the accel data into floating point values.
+		g_Pack.pack.accelX = ((float) i16AccelData[0]) / g_accelLSBg;
+		g_Pack.pack.accelY = ((float) i16AccelData[1]) / g_accelLSBg;
+		g_Pack.pack.accelZ = ((float) i16AccelData[2]) / g_accelLSBg;
 	}
 
 	//
@@ -2069,15 +2135,15 @@ void ProcessIMUData(void) {
 //
 //*****************************************************************************
 void UpdateTrajectory(void) {
-    uint32_t ui32Status;
+	uint32_t ui32Status;
 
-    //
-    // Get the interrupt status.
-    ui32Status = TimerIntStatus(UPDATE_TIMER, true);
+	//
+	// Get the interrupt status.
+	ui32Status = TimerIntStatus(UPDATE_TIMER, true);
 
-    //
-    // Clear the interrupt.
-    TimerIntClear(UPDATE_TIMER, ui32Status);
+	//
+	// Clear the interrupt.
+	TimerIntClear(UPDATE_TIMER, ui32Status);
 
 	//
 	// TODO: This is where the control law and stuff will go.
@@ -2118,8 +2184,7 @@ void UpdateTrajectory(void) {
 			//
 			// We are flying. Set the parameters sent from the radio.
 			// Get the throttle.
-			int32_t ui32Throttle =
-					(int32_t) (g_sRxPack.sControlPacket.throttle);
+			int32_t ui32Throttle = (int32_t) (g_sRxPack.sControlPacket.throttle);
 
 			if (g_sRxPack.sControlPacket.throttle == 0) {
 				sThrottle.fAirMtr1Throttle = g_ui32ZeroThrottle;
@@ -2131,44 +2196,39 @@ void UpdateTrajectory(void) {
 				sThrottle.fAirMtr5Throttle = g_ui32ZeroThrottle;
 				sThrottle.fAirMtr6Throttle = g_ui32ZeroThrottle;
 #endif
-            }
-            else
-            {
-                if (g_sRxPack.sControlPacket.throttle <= 0)
-                {
-                    sThrottle.fAirMtr1Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE1;
-                    sThrottle.fAirMtr2Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE2;
-                    sThrottle.fAirMtr3Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE3;
-                    sThrottle.fAirMtr4Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE4;
+			} else {
+				if (g_sRxPack.sControlPacket.throttle <= 0) {
+					sThrottle.fAirMtr1Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE1;
+					sThrottle.fAirMtr2Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE2;
+					sThrottle.fAirMtr3Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE3;
+					sThrottle.fAirMtr4Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE4;
 
 #if !APOPHIS
-                    sThrottle.fAirMtr5Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE5;
-                    sThrottle.fAirMtr6Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE6;
+					sThrottle.fAirMtr5Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE5;
+					sThrottle.fAirMtr6Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE6;
 #endif
-                }
-                else
-                {
-                    sThrottle.fAirMtr1Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
-                    sThrottle.fAirMtr2Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
-                    sThrottle.fAirMtr3Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
-                    sThrottle.fAirMtr4Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+				} else {
+					sThrottle.fAirMtr1Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+					sThrottle.fAirMtr2Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+					sThrottle.fAirMtr3Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+					sThrottle.fAirMtr4Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
 
 #if !APOPHIS
-                    sThrottle.fAirMtr5Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
-                    sThrottle.fAirMtr6Throttle = (ui32Throttle
-                            * g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
-                }
+					sThrottle.fAirMtr5Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+					sThrottle.fAirMtr6Throttle = (ui32Throttle
+							* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+				}
 #endif
 				//
 				// Get the yaw value.
@@ -2356,39 +2416,32 @@ void UpdateTrajectory(void) {
 				if (i32Yaw == 1) {
 					//
 					// User is pressing right bumper. Rotate right (clockwise from above).
-                    sThrottle.fAirMtr1Throttle += 5 * g_ui32ThrottleIncrement;
-                    sThrottle.fAirMtr3Throttle += 5 * g_ui32ThrottleIncrement;
-                    sThrottle.fAirMtr2Throttle -= 5 * g_ui32ThrottleIncrement;
-                    sThrottle.fAirMtr4Throttle -= 5 * g_ui32ThrottleIncrement;
-
+					sThrottle.fAirMtr1Throttle += 5 * g_ui32ThrottleIncrement;
+					sThrottle.fAirMtr3Throttle += 5 * g_ui32ThrottleIncrement;
+					sThrottle.fAirMtr2Throttle -= 5 * g_ui32ThrottleIncrement;
+					sThrottle.fAirMtr4Throttle -= 5 * g_ui32ThrottleIncrement;
 
 				} else if (i32Yaw == -1) {
 					//
 					// User is pressing left bumper. Rotate left (counter-clockwise from above).
-                    sThrottle.fAirMtr1Throttle -= 5 * g_ui32ThrottleIncrement;
-                    sThrottle.fAirMtr3Throttle -= 5 * g_ui32ThrottleIncrement;
-                    sThrottle.fAirMtr2Throttle += 5 * g_ui32ThrottleIncrement;
-                    sThrottle.fAirMtr4Throttle += 5 * g_ui32ThrottleIncrement;				}
+					sThrottle.fAirMtr1Throttle -= 5 * g_ui32ThrottleIncrement;
+					sThrottle.fAirMtr3Throttle -= 5 * g_ui32ThrottleIncrement;
+					sThrottle.fAirMtr2Throttle += 5 * g_ui32ThrottleIncrement;
+					sThrottle.fAirMtr4Throttle += 5 * g_ui32ThrottleIncrement;
+				}
 			}
 		}
-			//
-			// Set the new throttles for the motors.
-			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1,
-					sThrottle.fAirMtr1Throttle);
-			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2,
-					sThrottle.fAirMtr2Throttle);
-			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3,
-					sThrottle.fAirMtr3Throttle);
-			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4,
-					sThrottle.fAirMtr4Throttle);
+		//
+		// Set the new throttles for the motors.
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.fAirMtr1Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.fAirMtr2Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.fAirMtr3Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.fAirMtr4Throttle);
 #if !APOPHIS
-			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5,
-					sThrottle.fAirMtr5Throttle);
-			PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6,
-					sThrottle.fAirMtr6Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, sThrottle.fAirMtr5Throttle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, sThrottle.fAirMtr6Throttle);
 #endif
-	}
- else {
+	} else {
 		//
 		// Check if radio is sending good data.
 		if (sStatus.bTargetSet) {

@@ -16,9 +16,11 @@
 
 //
 // Registers.
+#define MMA8452Q_STATUS 0x00
 #define MMA8452Q_DATA_X 0x01
 #define MMA8452Q_DATA_Y 0x03
 #define MMA8452Q_DATA_Z 0x05
+#define MMA8452Q_SYSMOD 0x0B
 #define MMA8452Q_INT_SOURCE 0x0C
 #define MMA8452Q_WHO_AM_I 0x0D
 #define MMA8452Q_RANGE 0x0E
@@ -53,6 +55,14 @@
 #define MMA8452Q_OFF_X 0x2F
 #define MMA8452Q_OFF_Y 0x30
 #define MMA8452Q_OFF_Z 0x31
+
+//
+// Register: Status
+#define MMA8452Q_DATA_RDY 0x08
+
+//
+// Register: SYSMOD
+#define MMA8452Q_NORMAL_MODE 0x01
 
 //
 // Register: INT_SOURCE
@@ -108,8 +118,25 @@
 // Register: TRANSIENT_COUNT
 
 //
-// Register: 
+// Register: CTRL_REG_1
+#define MMA8452Q_50_HZ 0x20
+#define MMA8452Q_WAKE_MODE 0x01
 
+//
+// Register: CTRL_REG_2
+#define MMA8452Q_RESET 0x40
+
+//
+// Register: CTRL_REG_4
+#define MMA8452Q_INT_DDRY_EN 0x01
+
+//
+// Register CTRL_REG_5
+#define MMA8452Q_INT_DDRY_INT1 0x01
+
+//
+// Function Prototypes
+void InitMMA8452Q(uint32_t I2C_base, uint8_t AccelRange, uint8_t AccelRate);
 
 
 #endif /* MMA8452Q_H */
