@@ -204,7 +204,7 @@ void InitRadio(uint32_t SysClockSpeed)
     // Configure the timer for radio timeout.
     // This will detect loss of radio communication.
     TimerConfigure(RADIO_TIMER_CHECK, TIMER_CFG_PERIODIC);
-    TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, SysClockSpeed / RADIO_TIMER_RATE * 2);
+    TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, SysClockSpeed / GS_RADIO_RATE * 2);
 
     //
     // Configure the interrupts for the timer.
