@@ -59,7 +59,7 @@
 #define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
 #define GNDMTRS_ACTIVATED false
-#define SECONDARY_ATTITUDE true
+#define SECONDARY_ATTITUDE false
 #define ULTRASONIC_ACTIVATED false
 #define SOLENOIDS_ACTIVATED true
 #define IMU_ACTIVATED true
