@@ -48,7 +48,7 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     txBuffer[0] = RX24_READ_DATA;
     txBuffer[1] = RX24_REG_STATUS_RETURN_LEVEL;
     txBuffer[2] = 0x01;
-    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, 1, rxBuffer, txBuffer);
+    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
 
     UARTprintf("Status Return Level: 0x%x\r\n", rxBuffer[0]);
 #endif
@@ -66,7 +66,7 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     txBuffer[0] = RX24_READ_DATA;
     txBuffer[1] = RX24_REG_BAUD_RATE;
     txBuffer[2] = 0x01;
-    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, 1, rxBuffer, txBuffer);
+    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
 
     UARTprintf("BAUD RATE: 0x%x\r\n", rxBuffer[0]);
 #endif
@@ -85,7 +85,7 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     txBuffer[0] = RX24_READ_DATA;
     txBuffer[1] = RX24_REG_CW_ANGLE_LIMIT_LSB;
     txBuffer[2] = 0x02;
-    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, 1, rxBuffer, txBuffer);
+    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
 
     UARTprintf("CW Angle Limit: 0x%x%x\r\n", rxBuffer[0], rxBuffer[1]);
 #endif
@@ -104,7 +104,7 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     txBuffer[0] = RX24_READ_DATA;
     txBuffer[1] = RX24_REG_CCW_ANGLE_LIMIT_LSB;
     txBuffer[2] = 0x02;
-    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, 1, rxBuffer, txBuffer);
+    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
 
     UARTprintf("CCW Angle Limit: 0x%x%x\r\n", rxBuffer[0], rxBuffer[1]);
 #endif
@@ -122,7 +122,7 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     txBuffer[0] = RX24_READ_DATA;
     txBuffer[1] = RX24_REG_LOW_VOLTAGE_LIMIT;
     txBuffer[2] = 0x01;
-    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, 1, rxBuffer, txBuffer);
+    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
 
     UARTprintf("Low Voltage Limit: 0x%x\r\n", rxBuffer[0]);
 #endif
@@ -140,7 +140,7 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     txBuffer[0] = RX24_READ_DATA;
     txBuffer[1] = RX24_REG_HIGH_VOLTAGE_LIMIT;
     txBuffer[2] = 0x01;
-    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, 1, rxBuffer, txBuffer);
+    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
 
     UARTprintf("High Voltage Limit: 0x%x\r\n", rxBuffer[0]);
 #endif
@@ -159,7 +159,7 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     txBuffer[0] = RX24_READ_DATA;
     txBuffer[1] = RX24_REG_MAX_TORQUE_LSB;
     txBuffer[2] = 0x02;
-    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, 1, rxBuffer, txBuffer);
+    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
 
     UARTprintf("Max Torque: 0x%x%x\r\n", rxBuffer[0], rxBuffer[1]);
 #endif
@@ -259,14 +259,14 @@ void Rx24FWrite(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
  * number of bytes to read.
  */
 void Rx24FRead(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
-              uint32_t numBytes, uint8_t *rxBuffer, uint8_t *txBuffer)
+              uint8_t *rxBuffer, uint8_t *txBuffer)
 {
     uint32_t index;
     uint8_t length;
     uint8_t checkSum;
     uint8_t sum = 0;
     uint16_t temp = 0;
-    uint8_t tempBuffer[txBuffer[2] + 7];
+    uint8_t tempBuffer[16];
     bool firstPass = true;
     bool validData = false;
 

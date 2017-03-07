@@ -3,7 +3,7 @@
  * Project: Aerial Platform for Overland Haul and Import System (APOPHIS)
  *
  *  Created On: Jan 20, 2017
- *  Last Updated: March 2, 2017
+ *  Last Updated: March 7, 2017
  *      Author(s): Brandon Klefman
  *
  *      Purpose: Flight computer for the APOPHIS platform.
@@ -102,6 +102,7 @@ void ActivateSolenoids(void);
 void DeactivateSolenoids(void);
 void SendPacket(void);
 void ProcessIMUData(void);
+void ProcessBME280(void);
 void WaitForButtonPress(uint8_t ButtonState);
 void UpdateTrajectory(void);
 
@@ -132,8 +133,8 @@ typedef struct {
 } SystemStatus;
 
 typedef struct {
-	float fGndMtrLWThrottle;
-	float fGndMtrRWThrottle;
+	uint16_t ui16GndMtrLWThrottle;
+	uint16_t ui16GndMtrRWThrottle;
 	uint32_t fAirMtr1Throttle;
 	float fAirMtr2Throttle;
 	float fAirMtr3Throttle;
@@ -325,6 +326,12 @@ float g_Temp;
 int32_t g_t_fine;
 int32_t *g_p_t_fine = &g_t_fine;
 
+/*
+ * Flags for the analysis in main from gnd motors.
+ */
+bool g_bGndMtr1Flag = false;
+bool g_bGndMtr2Flag = false;
+
 //*****************************************************************************
 //
 // Start of program.
@@ -511,8 +518,8 @@ int main(void) {
 	sThrottle.fAirMtr6Throttle = g_ui32ZeroThrottle;
 #endif
 
-	sThrottle.fGndMtrRWThrottle = 0.0f;
-	sThrottle.fGndMtrLWThrottle = 0.0f;
+	sThrottle.ui16GndMtrRWThrottle = 0x0000;
+	sThrottle.ui16GndMtrLWThrottle = 0x0000;
 
 	//
 	// Set the magic packets.
@@ -615,49 +622,21 @@ int main(void) {
 
 		//
 		// Check if pressure or temperature data is ready.
-		if (g_BME280Ready) {
-			int32_t tempInt;
-			uint32_t presInt;
-			int32_t rawPress, rawTemp;
-			uint8_t rxBuffer[16];
-			uint8_t *ptrBuffer = &rxBuffer[0];
+		if (g_BME280Ready)
+			ProcessBME280();
 
-			//
-			// Get the raw data.
-			GetBME280RawData(BOOST_I2C, ptrBuffer);
+		//
+		// Process anything received from ground motors.
+	//b	if (g_bGndMtr1Flag)
+			//ProcessGndMtr(GNDMTR1_UART);
+		//if (g_bGndMtr2Flag)
+			//ProcessGndMtr(GNDMTR2_UART);
 
-			rawPress = (rxBuffer[0] << 12) | (rxBuffer[1] << 4)
-					| (rxBuffer[2] >> 4);
-			rawTemp = (rxBuffer[3] << 12) | (rxBuffer[4] << 4)
-					| (rxBuffer[5] >> 4);
-			//rawHumid = (rxBuffer[6] << 8) | (rxBuffer[7]);
 
-			//tempInt = *g_ptrBME280RawData << 20;
-
-			//
-			// Correct the temp data.
-			tempInt = BME280_compensate_T_int32(rawTemp, g_p_t_fine,
-					g_BME280OffsetValues, g_BME280OffsetUnsigned);
-
-			//
-			// Calculate temp in degrees C, float format.
-			g_Temp = tempInt / 100.0f;
-
-			//
-			// Correct the pressure data.
-			presInt = BME280_compensate_P_int64(rawPress, g_p_t_fine,
-					g_BME280OffsetValues, g_BME280OffsetUnsigned + 1);
-
-			//
-			// Calculate pressure in float form (Pascals).
-			g_Pressure = presInt / 256.0f;
-		}
 	}
 	//
 	// Program ending. Do any clean up that's needed.
 	UARTprintf("Goodbye!\r\n");
-
-	I2CMasterDisable(BOOST_I2C);
 
 	TurnOffLED(5);
 
@@ -821,7 +800,14 @@ void GPSIntHandler(void) {
 //
 //*****************************************************************************
 void GndMtr1IntHandler(void) {
-	// TODO: Define Ground Motor 1 interrupt handler.
+	//
+	// Clear the interrupt.
+	uint32_t ui32Status = UARTIntStatus(GNDMTR1_UART, true);
+	UARTIntClear(GNDMTR1_UART, ui32Status);
+
+	//
+	// Trigger evaluation in main().
+	g_bGndMtr1Flag = true;
 }
 
 //*****************************************************************************
@@ -830,7 +816,14 @@ void GndMtr1IntHandler(void) {
 //
 //*****************************************************************************
 void GndMtr2IntHandler(void) {
-	// TODO: Define Ground Motor 2 interrupt handler.
+	//
+	// Clear the interrupt.
+	uint32_t ui32Status = UARTIntStatus(GNDMTR2_UART, true);
+	UARTIntClear(GNDMTR2_UART, ui32Status);
+
+	//
+	// Trigger evaluation in main().
+	g_bGndMtr2Flag = true;
 }
 
 //*****************************************************************************
@@ -1439,6 +1432,9 @@ void Menu(char charReceived) {
 		UARTprintf("Y - Activate solenoid enable pins.\r\n");
 		UARTprintf("X - Stop the motors.\r\n");
 		UARTprintf("Q - Quit this program.\r\n");
+		UARTprintf("I - Increase ground motor throttle.\r\n");
+		UARTprintf("K - Decrease ground motor throttle.\r\n");
+		UARTprintf("0 - Cut ground motor throttle.\r\n");
 		break;
 	}
 	case 'A': // Trigger solar panel ADC.
@@ -1545,6 +1541,104 @@ void Menu(char charReceived) {
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, g_ui32ZeroThrottle);
 #endif
 		UARTprintf("Throttle Decrease: %d\r\n", g_ui32ZeroThrottle);
+		break;
+	}
+	case 'I': // Increase ground motor throttle.
+	{
+		uint8_t txBuffer[4];
+
+		//
+		// Increase the throttle.
+		sThrottle.ui16GndMtrLWThrottle += RX24_THROTTLE_INCREMENT;
+		sThrottle.ui16GndMtrRWThrottle += RX24_THROTTLE_INCREMENT;
+
+		//
+		// Build the instruction packet.
+		txBuffer[0] = RX24_WRITE_DATA;
+		txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+		txBuffer[2] = (uint8_t)(sThrottle.ui16GndMtrLWThrottle & 0x00ff);
+		txBuffer[3] = (uint8_t)(sThrottle.ui16GndMtrLWThrottle >> 8);
+
+		//
+		// Send the command to the LW motor.
+		Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION,
+				4, txBuffer);
+
+		txBuffer[2] = (uint8_t)(sThrottle.ui16GndMtrRWThrottle & 0x00ff);
+		txBuffer[3] = (uint8_t)(sThrottle.ui16GndMtrRWThrottle >> 8);
+
+		//
+		// Send the command to the RW motor.
+		Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION,
+				4, txBuffer);
+
+		UARTprintf("Speeding up... \r\n");
+
+		break;
+	}
+	case 'K': // Decrease ground motor throttle.
+	{
+		uint8_t txBuffer[4];
+
+		//
+		// Decrease the throttle.
+		sThrottle.ui16GndMtrLWThrottle -= RX24_THROTTLE_INCREMENT;
+		sThrottle.ui16GndMtrRWThrottle -= RX24_THROTTLE_INCREMENT;
+
+		//
+		// Build the instruction packet.
+		txBuffer[0] = RX24_WRITE_DATA;
+		txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+		txBuffer[2] = (uint8_t)(sThrottle.ui16GndMtrLWThrottle & 0x00ff);
+		txBuffer[3] = (uint8_t)(sThrottle.ui16GndMtrLWThrottle >> 8);
+
+		//
+		// Send the command to the LW motor.
+		Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION,
+				4, txBuffer);
+
+		txBuffer[2] = (uint8_t)(sThrottle.ui16GndMtrRWThrottle & 0x00ff);
+		txBuffer[3] = (uint8_t)(sThrottle.ui16GndMtrRWThrottle >> 8);
+
+		//
+		// Send the command to the RW motor.
+		Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION,
+				4, txBuffer);
+
+		UARTprintf("Slowing down... \r\n");
+
+		break;
+	}
+	case '0': // Cut ground motor throttle.
+	{
+		uint8_t txBuffer[4];
+
+		//
+		// Incrase the throttle.
+		sThrottle.ui16GndMtrLWThrottle = RX24_STOP_CCW;
+		sThrottle.ui16GndMtrRWThrottle = RX24_STOP_CCW;
+
+		//
+		// Build the instruction packet.
+		txBuffer[0] = RX24_WRITE_DATA;
+		txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+		txBuffer[2] = (uint8_t)(sThrottle.ui16GndMtrLWThrottle & 0x00ff);
+		txBuffer[3] = (uint8_t)(sThrottle.ui16GndMtrLWThrottle >> 8);
+
+		//
+		// Send the command to the LW motor.
+		Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION,
+				4, txBuffer);
+
+		txBuffer[2] = (uint8_t)(sThrottle.ui16GndMtrRWThrottle & 0x00ff);
+		txBuffer[3] = (uint8_t)(sThrottle.ui16GndMtrRWThrottle >> 8);
+
+		//
+		// Send the command to the RW motor.
+		Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION,
+				4, txBuffer);
+
+		UARTprintf("Zero throttle.\r\n");
 		break;
 	}
 #endif
@@ -2130,6 +2224,60 @@ void ProcessIMUData(void) {
 	//
 	// Reset the flag
 	g_IMUDataFlag = false;
+}
+
+
+//*****************************************************************************
+//
+// This function will retrieve data from the pressure sensor at a fixed
+// frequency.
+//
+//*****************************************************************************
+void ProcessBME280(void) {
+	int32_t tempInt;
+	uint32_t presInt;
+	int32_t rawPress, rawTemp;
+	uint8_t rxBuffer[16];
+	uint8_t *ptrBuffer = &rxBuffer[0];
+
+	//
+	// Get the raw data.
+	GetBME280RawData(BOOST_I2C, ptrBuffer);
+
+	rawPress = (rxBuffer[0] << 12) | (rxBuffer[1] << 4) | (rxBuffer[2] >> 4);
+	rawTemp = (rxBuffer[3] << 12) | (rxBuffer[4] << 4) | (rxBuffer[5] >> 4);
+	//rawHumid = (rxBuffer[6] << 8) | (rxBuffer[7]);
+
+	//tempInt = *g_ptrBME280RawData << 20;
+
+	//
+	// Correct the temp data.
+	tempInt = BME280_compensate_T_int32(rawTemp, g_p_t_fine,
+			g_BME280OffsetValues, g_BME280OffsetUnsigned);
+
+	//
+	// Calculate temp in degrees C, float format.
+	g_Temp = tempInt / 100.0f;
+
+	//
+	// Correct the pressure data.
+	presInt = BME280_compensate_P_int64(rawPress, g_p_t_fine,
+			g_BME280OffsetValues, g_BME280OffsetUnsigned + 1);
+
+	//
+	// Calculate pressure in float form (Pascals).
+	g_Pressure = presInt / 256.0f;
+}
+
+//*****************************************************************************
+//
+// This function will be used to read data sent from the gnd motors.
+//
+//*****************************************************************************
+void ProcessGndMtr(uint32_t UART_BASE)
+{
+	//
+	// TODO: logic for data retreival.
 }
 
 //*****************************************************************************

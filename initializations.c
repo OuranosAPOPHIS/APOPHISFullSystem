@@ -316,17 +316,19 @@ void InitGndMotors(uint32_t SysClockSpeed) {
 
 	//
 	// Configure both ground motors.
-	InitRx24FMotor(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION);
 	InitRx24FMotor(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION);
+	InitRx24FMotor(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION);
 
 	//
 	// Enable the UART interrupt.
 	// TODO: Check interrupt initialization for ground motors.
 	IntEnable(GNDMTR1_INT);
 	UARTIntEnable(GNDMTR1_UART, UART_INT_RX | UART_INT_RT);
+	UARTIntRegister(GNDMTR1_UART, GndMtr1IntHandler);
 
 	IntEnable(GNDMTR2_INT);
 	UARTIntEnable(GNDMTR2_UART, UART_INT_RX | UART_INT_RT);
+	UARTIntRegister(GNDMTR2_UART, GndMtr2IntHandler);
 
 	//
 	// Initialization complete. Print to console.

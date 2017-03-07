@@ -153,6 +153,10 @@
 // Last bit controls direction. 0 - 1023 is CCW
 // 1024 - 2047 is CW
 // It is % of max output not direct speed.
+// Throttle increment is 2% of total output.
+#define RX24_STOP_CCW 0x0000
+#define RX24_STOP_CW 0x0400
+#define RX24_THROTTLE_INCREMENT 0x14
 
 //
 // Torque limit
@@ -204,7 +208,7 @@ void InitRx24FMotor(uint32_t Uart_base, uint32_t Gpio_base, uint32_t Gpio_pin);
 void Rx24FWrite(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
                 uint32_t numBytes, uint8_t *buffer);
 void Rx24FRead(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
-              uint32_t numBytes, uint8_t *rxBuffer, uint8_t *txBuffer);
+              uint8_t *rxBuffer, uint8_t *txBuffer);
 
 
 #endif /* GND_MTRS_H_ */

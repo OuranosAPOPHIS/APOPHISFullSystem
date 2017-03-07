@@ -258,11 +258,11 @@ FaultISR(void)
     {
         int i = 0;
 
-        for (i = 0; i < 2400000; i++) {}
+        for (i = 0; i < 1200000; i++) {}
 
         TurnOnLED(5);
 
-        for (i = 0; i < 2400000; i++) {}
+        for (i = 0; i < 1200000; i++) {}
 
         TurnOffLED(5);
     }
