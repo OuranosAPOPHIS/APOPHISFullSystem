@@ -35,16 +35,17 @@
 
 #include "sensorlib/comp_dcm.h"
 
-#include "buttons.h"
+#include "misc/buttons.h"
 
 #include "utils/uartstdio.h"
 
 #include "initializations.h"
 #include "APOPHIS_pin_map.h"
 #include "packet_format.h"
-#include "bmi160.h"
-#include "i2c_driver.h"
-#include "bme280.h"
+#include "sensors/bmi160.h"
+#include "sensors/i2c_driver.h"
+#include "sensors/bme280.h"
+#include "motors/gnd_mtrs.h"
 
 //*****************************************************************************
 //
@@ -56,15 +57,15 @@
 #define APOPHIS false
 
 #define CONSOLE_ACTIVATED true
-#define RADIO_ACTIVATED true
+#define RADIO_ACTIVATED false
 #define GPS_ACTIVATED false
-#define GNDMTRS_ACTIVATED false
+#define GNDMTRS_ACTIVATED true
 #define SECONDARY_ATTITUDE false
 #define ULTRASONIC_ACTIVATED false
-#define SOLENOIDS_ACTIVATED true
-#define IMU_ACTIVATED true
+#define SOLENOIDS_ACTIVATED false
+#define IMU_ACTIVATED false
 #define ALTIMETER_ACTIVATED false
-#define AIRMTRS_ACTIVATED true
+#define AIRMTRS_ACTIVATED false
 
 #define ONEG 16384
 #define SPEEDIS120MHZ true
@@ -330,12 +331,14 @@ int32_t *g_p_t_fine = &g_t_fine;
 //
 //*****************************************************************************
 int main(void) {
-
-	int numCalcs = 0;
-	int index, j;
-	int32_t ui32Sum[3] = { 0 };
-	int16_t bias[3][50] = { 0 };
 	uint32_t speed = 0;
+
+#if IMU_ACTIVATED
+    int numCalcs = 0;
+    int index, j;
+    int32_t ui32Sum[3] = { 0 };
+    int16_t bias[3][50] = { 0 };
+#endif
 
 	//
 	// Enable lazy stacking for interrupt handlers.  This allows floating-point

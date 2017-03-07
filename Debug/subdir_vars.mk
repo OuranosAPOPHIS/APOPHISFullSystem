@@ -9,75 +9,33 @@ CMD_SRCS += \
 ../tm4c1294ncpdt.cmd 
 
 C_SRCS += \
-../bme280.c \
-../bmi160.c \
-../buttons.c \
-../comp_dcm.c \
-../i2c_driver.c \
 ../initializations.c \
 ../main.c \
-../mma8452q.c \
-../tm4c1294ncpdt_startup_ccs.c \
-../uartstdio.c 
+../tm4c1294ncpdt_startup_ccs.c 
 
 C_DEPS += \
-./bme280.d \
-./bmi160.d \
-./buttons.d \
-./comp_dcm.d \
-./i2c_driver.d \
 ./initializations.d \
 ./main.d \
-./mma8452q.d \
-./tm4c1294ncpdt_startup_ccs.d \
-./uartstdio.d 
+./tm4c1294ncpdt_startup_ccs.d 
 
 OBJS += \
-./bme280.obj \
-./bmi160.obj \
-./buttons.obj \
-./comp_dcm.obj \
-./i2c_driver.obj \
 ./initializations.obj \
 ./main.obj \
-./mma8452q.obj \
-./tm4c1294ncpdt_startup_ccs.obj \
-./uartstdio.obj 
+./tm4c1294ncpdt_startup_ccs.obj 
 
 OBJS__QUOTED += \
-"bme280.obj" \
-"bmi160.obj" \
-"buttons.obj" \
-"comp_dcm.obj" \
-"i2c_driver.obj" \
 "initializations.obj" \
 "main.obj" \
-"mma8452q.obj" \
-"tm4c1294ncpdt_startup_ccs.obj" \
-"uartstdio.obj" 
+"tm4c1294ncpdt_startup_ccs.obj" 
 
 C_DEPS__QUOTED += \
-"bme280.d" \
-"bmi160.d" \
-"buttons.d" \
-"comp_dcm.d" \
-"i2c_driver.d" \
 "initializations.d" \
 "main.d" \
-"mma8452q.d" \
-"tm4c1294ncpdt_startup_ccs.d" \
-"uartstdio.d" 
+"tm4c1294ncpdt_startup_ccs.d" 
 
 C_SRCS__QUOTED += \
-"../bme280.c" \
-"../bmi160.c" \
-"../buttons.c" \
-"../comp_dcm.c" \
-"../i2c_driver.c" \
 "../initializations.c" \
 "../main.c" \
-"../mma8452q.c" \
-"../tm4c1294ncpdt_startup_ccs.c" \
-"../uartstdio.c" 
+"../tm4c1294ncpdt_startup_ccs.c" 
 
 

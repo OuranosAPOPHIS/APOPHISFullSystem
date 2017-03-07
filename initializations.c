@@ -35,10 +35,11 @@
 
 #include "utils/uartstdio.h"
 
-#include "bmi160.h"
-#include "bme280.h"
-#include "mma8452q.h"
-#include "i2c_driver.h"
+#include "sensors/bmi160.h"
+#include "sensors/bme280.h"
+#include "sensors/mma8452q.h"
+#include "sensors/i2c_driver.h"
+#include "motors/gnd_mtrs.h"
 
 #define APOPHIS false
 
@@ -278,6 +279,11 @@ void InitGndMotors(uint32_t SysClockSpeed) {
 	SysCtlPeripheralEnable(GNDMTR2_GPIO_PERIPH);
 
 	//
+	// Enable the direction pins for the RS485 converter.
+	SysCtlPeripheralEnable(GNDMTR1_GPIO_DIRECTION_PERIPH);
+	SysCtlPeripheralEnable(GNDMTR2_GPIO_DIRECTION_PERIPH);
+
+	//
 	// Configure the pin muxing for UART2 and UART7 functions on port A0 and A1.
 	GPIOPinConfigure(GNDMTR1_CONFIG_PINRX);
 	GPIOPinConfigure(GNDMTR1_CONFIG_PINTX);
@@ -295,14 +301,23 @@ void InitGndMotors(uint32_t SysClockSpeed) {
 	GPIOPinTypeUART(GNDMTR2_PORT, GNDMTR2_PINRX | GNDMTR2_PINTX);
 
 	//
-	// Configure UART6 for 115,200, 8-N-1 operation.
-	// TODO: Check configuration parameters for the Ground Motors.
-	UARTConfigSetExpClk(GNDMTR1_UART, SysClockSpeed, 115200,
+	// Configure the RS485 direction pin as GPIO output.
+	GPIOPinTypeGPIOOutput(GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION);
+    GPIOPinTypeGPIOOutput(GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION);
+
+	//
+	// Configure UART6 for 57,600, 8-N-1 operation.
+	UARTConfigSetExpClk(GNDMTR1_UART, SysClockSpeed, 57600,
 			(UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
 			UART_CONFIG_PAR_NONE));
-	UARTConfigSetExpClk(GNDMTR2_UART, SysClockSpeed, 115200,
+	UARTConfigSetExpClk(GNDMTR2_UART, SysClockSpeed, 57600,
 			(UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
 			UART_CONFIG_PAR_NONE));
+
+	//
+	// Configure both ground motors.
+	InitRx24FMotor(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION);
+	InitRx24FMotor(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION);
 
 	//
 	// Enable the UART interrupt.
