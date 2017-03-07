@@ -28,7 +28,8 @@
 void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
 {
     uint8_t txBuffer[4];
-    uint8_t rxBuffer[2];
+    uint8_t rxBuffer[100] = { 0 };
+    uint32_t index = 0;
 
     //
     // Reset the device.
@@ -48,7 +49,7 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     txBuffer[0] = RX24_READ_DATA;
     txBuffer[1] = RX24_REG_STATUS_RETURN_LEVEL;
     txBuffer[2] = 0x01;
-    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
+    //Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
 
     UARTprintf("Status Return Level: 0x%x\r\n", rxBuffer[0]);
 #endif
@@ -164,6 +165,8 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     UARTprintf("Max Torque: 0x%x%x\r\n", rxBuffer[0], rxBuffer[1]);
 #endif
 
+    GPIOPinWrite(GPIO_BASE, GPIO_PIN, 0x00);
+
 }
 
 /*
@@ -266,7 +269,7 @@ void Rx24FRead(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
     uint8_t checkSum;
     uint8_t sum = 0;
     uint16_t temp = 0;
-    uint8_t tempBuffer[16];
+    uint8_t tempBuffer[16] = { 0 };
     bool firstPass = true;
     bool validData = false;
 
@@ -342,13 +345,17 @@ void Rx24FRead(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
     //
     // Drive the direction pin to low to indicate a read.
     GPIOPinWrite(GPIO_BASE, GPIO_PIN, 0x00);
-
     SysCtlDelay(10000);
     index = 0;
 
+	while (UARTCharsAvail(UART_BASE))
+	{
+		tempBuffer[index++] = UARTCharGetNonBlocking(UART_BASE);
+	}
+
     //
     // Get the data sent back by the motor.
-    while (UARTCharsAvail(UART_BASE) || (index < sizeof(tempBuffer)))
+    while (UARTCharsAvail(UART_BASE) && (index < sizeof(tempBuffer)))
     {
         if (!validData) {
             tempBuffer[index++] = UARTCharGetNonBlocking(UART_BASE);
