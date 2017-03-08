@@ -12,6 +12,7 @@ See other repositories such as "gps_test" for specific software for other valida
  +## Hardware
  +* Texas Instruments EK-TM4C1294XL LaunchPad
  +* Texas Instruments BOOSTXL-SENSORS
+ +* 3D Robotics Radio V2
  +* GPS Receiver GP - 20U7
  +* Robotis RX24F Motors
  +* Eflite Power 60 470Kv brushless motors
