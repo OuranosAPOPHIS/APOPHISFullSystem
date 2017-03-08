@@ -15,7 +15,7 @@
 
 //
 // Default Device ID
-#define RX24_ID 0x01
+#define RX24_ID 0xFE
 
 //
 // Types of Instruction commands

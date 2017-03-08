@@ -78,7 +78,7 @@
 void SysTickIntHandler(void);
 void ConsoleIntHandler(void);
 void RadioIntHandler(void);
-void GPSIntHandler(void);
+void GPSIntHandler(void);z
 void GndMtr1IntHandler(void);
 void GndMtr2IntHandler(void);
 void Timer2AInterrupt(void);

@@ -29,7 +29,6 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
 {
     uint8_t txBuffer[4];
     uint8_t rxBuffer[100] = { 0 };
-    uint32_t index = 0;
 
     //
     // Reset the device.
@@ -49,7 +48,7 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     txBuffer[0] = RX24_READ_DATA;
     txBuffer[1] = RX24_REG_STATUS_RETURN_LEVEL;
     txBuffer[2] = 0x01;
-    //Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
+    Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
 
     UARTprintf("Status Return Level: 0x%x\r\n", rxBuffer[0]);
 #endif
@@ -102,9 +101,8 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
 #if DEBUG
     //
     // Read the CW angle limit value.
-    txBuffer[0] = RX24_READ_DATA;
-    txBuffer[1] = RX24_REG_CCW_ANGLE_LIMIT_LSB;
-    txBuffer[2] = 0x02;
+    txBuffer[0] = RX24_REG_CCW_ANGLE_LIMIT_LSB;
+    txBuffer[1] = 0x02;
     Rx24FRead(UART_BASE, GPIO_BASE, GPIO_PIN, rxBuffer, txBuffer);
 
     UARTprintf("CCW Angle Limit: 0x%x%x\r\n", rxBuffer[0], rxBuffer[1]);
@@ -186,7 +184,7 @@ void Rx24FWrite(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
     uint32_t index;
     uint8_t length;
     uint8_t checkSum;
-    uint8_t sum = 0;
+    uint16_t sum = 0;
     uint16_t temp = 0;
 
     //
@@ -240,7 +238,7 @@ void Rx24FWrite(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
     //
     // Check to make sure temp does not exceed 255.
     if (temp > 255)
-        checkSum = ~(temp & 0x00FF);
+        checkSum = (uint8_t)(~(temp & 0x00FF));
     else
         checkSum = ~(temp);
 
@@ -256,7 +254,6 @@ void Rx24FWrite(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
  * UART_BASE - base address of the UART module used with the motor.
  * GPIO_BASE - gpio address for the direction pin.
  * GPIO_PIN - gpio pin for the direction indication.
- * numBytes - number of bytes to read from the device.
  * rxBuffer - bytes to read from device.
  * txBuffer - bytes to send to device. This must be the read address and
  * number of bytes to read.
@@ -264,7 +261,7 @@ void Rx24FWrite(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
 void Rx24FRead(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
               uint8_t *rxBuffer, uint8_t *txBuffer)
 {
-    uint32_t index;
+    uint32_t index = 0;
     uint8_t length;
     uint8_t checkSum;
     uint8_t sum = 0;
@@ -272,81 +269,19 @@ void Rx24FRead(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
     uint8_t tempBuffer[16] = { 0 };
     bool firstPass = true;
     bool validData = false;
+    uint8_t buffer[3];
+
+    buffer[0] = RX24_READ_DATA;
+    buffer[1] = txBuffer[0];
+    buffer[2] = txBuffer[1];
 
     //
-    // Drive the direction pin High to indicate a write.
-    GPIOPinWrite(GPIO_BASE, GPIO_PIN, GPIO_PIN);
-
-    //
-    // Write two 0xFF to indicate start of packet transfer.
-    for (index = 0; index < 2; index++)
-    {
-        //
-        // Make sure there is space available in the FIFO.
-        while (!UARTSpaceAvail(UART_BASE))
-            ;
-
-        UARTCharPutNonBlocking(UART_BASE, 0xFF);
-    }
-
-    while (!UARTSpaceAvail(UART_BASE))
-        ;
-
-    //
-    // Send the device ID.
-    UARTCharPutNonBlocking(UART_BASE, RX24_ID);
-    while (!UARTSpaceAvail(UART_BASE))
-        ;
-
-    //
-    // Send the packet size. Read commands will always be 4 bytes.
-    length = 4;
-    UARTCharPutNonBlocking(UART_BASE, length);
-
-    //
-    // Send the Read instruction.
-    while (!UARTSpaceAvail(UART_BASE))
-        ;
-    UARTCharPutNonBlocking(UART_BASE, RX24_READ_DATA);
-
-    //
-    // Send the rest of the data.
-    for (index = 0; index < 2; index++)
-    {
-        while (!UARTSpaceAvail(UART_BASE))
-            ;
-
-        UARTCharPutNonBlocking(UART_BASE, txBuffer[index]);
-    }
-
-    while (!UARTSpaceAvail(UART_BASE))
-                ;
-
-    //
-    // Write the checksum.
-    //
-    // Calculate and write the checksum.
-    temp = (RX24_ID + length + sum);
-
-    //
-    // Check to make sure temp does not exceed 255.
-    if (temp > 255)
-        checkSum = ~(temp & 0x00FF);
-    else
-        checkSum = ~(temp);
-
-    UARTCharPutNonBlocking(UART_BASE, checkSum);
-
-    //
-    // Wait for everything to send.
-    while (UARTBusy(UART_BASE))
-        ;
+    // Send the location of the read.
+    Rx24FWrite(UART_BASE, GPIO_BASE, GPIO_PIN, 3, buffer);
 
     //
     // Drive the direction pin to low to indicate a read.
     GPIOPinWrite(GPIO_BASE, GPIO_PIN, 0x00);
-    SysCtlDelay(10000);
-    index = 0;
 
 	while (UARTCharsAvail(UART_BASE))
 	{
@@ -355,7 +290,7 @@ void Rx24FRead(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
 
     //
     // Get the data sent back by the motor.
-    while (UARTCharsAvail(UART_BASE) && (index < sizeof(tempBuffer)))
+    while (UARTCharsAvail(UART_BASE) ) // && (index < sizeof(tempBuffer)))
     {
         if (!validData) {
             tempBuffer[index++] = UARTCharGetNonBlocking(UART_BASE);
