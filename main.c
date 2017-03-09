@@ -78,7 +78,7 @@
 void SysTickIntHandler(void);
 void ConsoleIntHandler(void);
 void RadioIntHandler(void);
-void GPSIntHandler(void);z
+void GPSIntHandler(void);
 void GndMtr1IntHandler(void);
 void GndMtr2IntHandler(void);
 void Timer2AInterrupt(void);
@@ -111,6 +111,8 @@ void UpdateTrajectory(void);
 // Global Variables
 //
 //*****************************************************************************
+
+bool g_LEDON = false;
 
 //
 // State of the system structure definition and variable.
@@ -824,6 +826,8 @@ void GndMtr2IntHandler(void) {
 	//
 	// Trigger evaluation in main().
 	g_bGndMtr2Flag = true;
+
+	UARTCharGet(GNDMTR2_UART);
 }
 
 //*****************************************************************************
@@ -1641,6 +1645,28 @@ void Menu(char charReceived) {
 		UARTprintf("Zero throttle.\r\n");
 		break;
 	}
+	case 'L':
+	{
+		uint8_t txBuffer[3];
+
+		if (g_LEDON) {
+			txBuffer[2] = 0x01;
+			g_LEDON = false;
+		}
+		else {
+			txBuffer[2] = 0x00;
+			g_LEDON = true;
+		}
+
+		 //
+		// Set the status return register.
+		txBuffer[0] = RX24_WRITE_DATA;
+		txBuffer[1] = RX24_REG_LED_EN;
+		Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION,
+				3, txBuffer);
+	break;
+	}
+
 #endif
 	case 'Y': // Activate the solenoids
 	{
