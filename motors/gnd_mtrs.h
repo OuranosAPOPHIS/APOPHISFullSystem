@@ -156,7 +156,7 @@
 // Throttle increment is 2% of total output.
 #define RX24_STOP_CCW 0x0000
 #define RX24_STOP_CW 0x0400
-#define RX24_THROTTLE_INCREMENT 0x14
+#define RX24_THROTTLE_INCREMENT 0x0A
 
 //
 // Torque limit

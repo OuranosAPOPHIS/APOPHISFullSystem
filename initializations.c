@@ -190,8 +190,9 @@ void InitRadio(uint32_t SysClockSpeed) {
 
 	//
 	// Configure the timer for sending radio packets.
+	TimerClockSourceSet(RADIO_TIMER, TIMER_CLOCK_PIOSC);
 	TimerConfigure(RADIO_TIMER, TIMER_CFG_PERIODIC);
-	TimerLoadSet(RADIO_TIMER, TIMER_A, SysClockSpeed / RADIO_TIMER_RATE);
+	TimerLoadSet(RADIO_TIMER, TIMER_A, 16000000 / RADIO_TIMER_RATE);
 
 	//
 	// Configure the interrupts for the timer.
@@ -642,18 +643,12 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
 	SysCtlPeripheralEnable(DCM_TIMER_PERIPH);
 
 	//
-	// Configure and enable the timer.
-	//
-	// Configure the timer to run at 25 Hz.
+	// Configure the timer to run at 100 Hz for both
+	// the compDCMupdate and updateTrajectory().
 	TimerClockSourceSet(DCM_TIMER, TIMER_CLOCK_PIOSC);
-	TimerConfigure(DCM_TIMER, TIMER_CFG_PERIODIC);
+	TimerConfigure(DCM_TIMER, TIMER_CFG_SPLIT_PAIR | TIMER_CFG_A_PERIODIC |
+			TIMER_CFG_B_PERIODIC);
 	TimerLoadSet(DCM_TIMER, TIMER_A, 16000000 / DCM_UPDATE_RATE);
-
-	//
-	// Configure and enable the timer for the UpdateTrajectory.
-	// Configure the timer to run at 100 Hz.
-	TimerConfigure(UPDATE_TIMER, TIMER_CFG_PERIODIC);
-	TimerLoadSet(UPDATE_TIMER, TIMER_A, 16000000 / UPDATE_TRAJECTORY_RATE);
 
 	//
 	// Configure the interrupts for the timer.
@@ -661,13 +656,6 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
 	TimerIntEnable(DCM_TIMER, TIMER_TIMA_TIMEOUT);
 	IntEnable(DCM_TIMER_INT);
 	TimerIntRegister(DCM_TIMER, TIMER_A, DCMUpdateTimer);
-
-	//
-	// Configure the interrupts for the timer.
-	TimerIntClear(UPDATE_TIMER, TIMER_TIMB_TIMEOUT);
-	TimerIntEnable(UPDATE_TIMER, TIMER_TIMB_TIMEOUT);
-	IntEnable(UPDATE_TIMER_INT);
-	TimerIntRegister(UPDATE_TIMER, TIMER_B, UpdateTrajectory);
 
 	//
 	// Before calling the BMI160 initialize function, make sure the I2C
