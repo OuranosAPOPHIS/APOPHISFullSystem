@@ -2383,33 +2383,37 @@ void AutoFlyUpdate(void) {
 
 		//
 		// TODO: Calculate a trajectory.
-		if (sStatus.fCurrentAlt > sStatus.fTargetAlt) {
-			if(sStatus.fCurrentAlt - sStatus.fTargetAlt >0.03) {
+		if ((sStatus.fCurrentAlt > sStatus.fTargetAlt) && (sStatus.fCurrentAlt - sStatus.fTargetAlt > 0.03)) {
 				sStatus.fTargetAlt = sStatus.fCurrentAlt - 0.03;
-			}
 		}
+
 		fKpX = 0.1;
 		fKpY = 1;
 		fKpZ = 0.075l;
 		fXdotDes = (sStatus.fCurrentLat - sStatus.fTargetLat) * (111.2 / 0.001) * KpX; //Each 0.001 degrees of latitude equates to 111.2 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
 		fYdotDes = (sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) * KpY; //Each 0.001 degrees of latitude equates to 91.51 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
 		fZdotDes = (-sStatus.fCurrentAlt - -sStatus.fTargetAlt) * KpZ;
+
 		fXdotCurrent = sSensStatus.fPrevVelX + (DT * sSensStatus.fPreviousAccelX);
 		sSensStatus.fPrevVelX = fXdotCurrent;
 		fYdotCurrent = sSensStatus.fPrevVelY + (DT * sSensStatus.fPreviousAccelY);
 		sSensStatus.fPrevVely = fYdotCurrent;
 		fZdotCurrent = sSensStatus.fPrevVelZ + (DT * sSensStatus.fPreviousAccelZ);
 		sSensStatus.fPrevVelZ = fZdotCurrent;
+
 		fKdX = 1;
 		fKdY = 1;
 		fKdZ = 2;
+
 		fXdotdotDes = (fXdotDes - fXdotCurrent) * KdX;
 		fYdotdotDes = (fYdotDes - fYdotCurrent) * KdY;
 		fZdotdotDes = (fZdotDes - fZdotCurrent) * KdZ;
+
 		fFx = fXdotdotDes * sStatus.fMass;
 		fFy = fYdotdotDes * sStatus.fMass;
 		fFz = fZdotdotDes * sStatus.fMass;
 		fFMax = 238.3101;
+
 		if (fFz>fFMax){
 			fFzSat = fFMax;
 		}else if (fFz<-9.8*sStatus.fMass){
@@ -2417,26 +2421,34 @@ void AutoFlyUpdate(void) {
 		}else{
 			fFzSat = fFz;
 		}
+
 		fThrust = sqrt((sSensStatus.fCurrentAccelX * sSensStatus.fCurrentAccelX) + (sSensStatus.fCurrentAccelY * sSensStatus.fCurrentAccelY) + (sSensStatus.fCurrentAccelZ * sSensStatus.fCurrentAccelZ)) - 1;
 		fRollDes = fFy / fThrust;
 		fPitchdes = -fFx / fThrust;
 		fYawdes = 0;
+
 		fKpR = 2.09974943882214;
 		fKpP = 2.09974943882214;
 		fKpYa = 2.09974943882214;
+
 		fRolldotDes = (fRollDes - sStatus.fRoll) * fKpR;
 		fPitchdotDes = (fPitchDes - sStatus.fPitch) * fKpP;
 		fYawdotDes = (fYawDes - sStatus.fYaw) * fKpYa;
+
 		fKdR = 4;
 		fKdP = 4;
 		fKdYa = 4;
+
 		fRolldotdotDes = (fRolldotDes - sSensStatus.fCurrentGyroX) * fKdR;
 		fPitchdotdotDes = (fPitchdotDes - sSensStatus.fCurrentGyroY) * fKdP;
 		fYawdotdotDes = (fYawdotDes - sSensStatus.fCurrentGyroZ) * fKdYa;
+
 		fMatThdotdot [1][3] = {fRolldotdotDes,fPitchdotdotDes,fYawdotdotDes};
 		fMatTorque[1][3] = fMatI * fMatThdotdot;
 		fMatTot[1][4] = {fMatTorque,fFzSat };
+
 		fThrustDes[1][4] = fMatBinv * fMatTot; 
+
 	} else {
 		//
 		// Radio data is bad. Set the current location as the target location.
