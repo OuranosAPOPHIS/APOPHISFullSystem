@@ -68,7 +68,7 @@
 
 #define ONEG 16384
 #define SPEEDIS120MHZ true
-
+#define DT 0.01
 //*****************************************************************************
 //
 // Function prototypes
@@ -128,13 +128,34 @@ typedef struct {
 	float fRoll;		// Actual platform roll (degrees).
 	float fPitch;		// Actual platform pitch (degrees).
 	float fYaw;			// Actual platform yaw (degrees).
+	float fMass;			// Actual platform mass (kg).
+	float fMatI;			// Mass Moment of Inertia of the Platform
 	float fCurrentLat;		// Current Latitide.
 	float fCurrentLong;		// Current longitude.
+	float fCurrentAlt;		// Current Altitude.
 	float fTargetLat;		// Target latitude.
 	float fTargetLong;		// Target longiutde.
+	float fTargetAlt;		// Target Altitude.
 	float fTempTargetLat;// Temporary target latitude for before the location is set by the GS.
 	float fTempTargetLong; // Temporary target longitude for before the location is set by the GS.
 } SystemStatus;
+
+//
+// Structure for all of the sensor values. 
+typedef struct {
+	float fCurrentAccelX;		// Current Acceleration in X direction
+	float fCurrentAccelY;		// Current Acceleration in Y direction
+	float fCurrentAccelZ;		// Current Acceleration in Z direction
+	float fPrevVelX;
+	float fPrevVelY;
+	float fPrevVelZ;
+	float fPrevPosX;
+	float fPrevPosY;
+	float fPrevPosZ;
+	float fCurrentGyroX;
+	float fCurrentGyroY;
+	float fCurrentGyroZ;
+} SensorStatus;
 
 typedef struct {
 	uint16_t ui16GndMtrLWThrottle;
@@ -161,6 +182,16 @@ SystemThrottle sThrottle;
 //
 // Initialize the state of the system.
 SystemStatus sStatus;
+
+//
+// Initialize the sensor state.
+SensorStatus sSensStatus = 0;
+sSensStatus.fPrevVelX = 0;
+sSensStatus.fPrevVelY = 0;
+sSensStatus.fPrevVelZ = 0;
+sSensStatus.fPrevPosX = 0;
+sSensStatus.fPrevPosY = 0;
+sSensStatus.fPrevPosZ = 0;
 
 //
 // Global Instance structure to manage the DCM state.
@@ -518,6 +549,7 @@ int main(void) {
 	sStatus.bPayDeployed = false;
 	sStatus.bRadioConnected = false;
 	sStatus.bTargetSet = false;
+	sStatus.fMass = 16;
 
 	//
 	// Initialize the throttle of the system.
@@ -2056,6 +2088,7 @@ void DeactivateSolenoids(void) {
 	// Update system status.
 	sStatus.bPayDeploying = false;
 	sStatus.bPayDeployed = true;
+	sStatus.fMass = 11;
 }
 
 //*****************************************************************************
@@ -2301,6 +2334,45 @@ void ProcessBME280(void) {
 //*****************************************************************************
 void AutoFlyUpdate(void) {
 
+	float temp;
+	float fXdotDes;
+	float fYdotDes;
+	float fZdotDes;
+	float fXdotdotDes;
+	float fYdotdotDes;
+	float fZdotdotDes;
+	float fXdotCurrent;
+	float fYdotCurrent;
+	float fZdotCurrent;
+	float fKpX;
+	float fKpY;
+	float fKpZ;
+	float fKdX;
+	float fKdY;
+	float fKdZ;
+	float fKpR;
+	float fKpP;
+	float fKpYa;
+	float fKdR;
+	float fKdP;
+	float fKdYa;
+	float fFx;
+	float fFy;
+	float fFz;
+	float fFzSat
+	float fFmax;
+	float fThrust;
+	float fRollDes;
+	float fPitchDes;
+	float fYawDes;
+	float fRolldotDes;
+	float fPitchdotDes;
+	float fYawdotDes;
+	float fMatThdotdot;
+	float fMatBinv;
+	float fMatTorque;
+	float fMatTot;
+	float fThrustDes;
 	//
 	// TODO: This is where the control law and stuff will go.
 	//
@@ -2311,6 +2383,60 @@ void AutoFlyUpdate(void) {
 
 		//
 		// TODO: Calculate a trajectory.
+		if (sStatus.fCurrentAlt > sStatus.fTargetAlt) {
+			if(sStatus.fCurrentAlt - sStatus.fTargetAlt >0.03) {
+				sStatus.fTargetAlt = sStatus.fCurrentAlt - 0.03;
+			}
+		}
+		fKpX = 0.1;
+		fKpY = 1;
+		fKpZ = 0.075l;
+		fXdotDes = (sStatus.fCurrentLat - sStatus.fTargetLat) * (111.2 / 0.001) * KpX; //Each 0.001 degrees of latitude equates to 111.2 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
+		fYdotDes = (sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) * KpY; //Each 0.001 degrees of latitude equates to 91.51 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
+		fZdotDes = (-sStatus.fCurrentAlt - -sStatus.fTargetAlt) * KpZ;
+		fXdotCurrent = sSensStatus.fPrevVelX + (DT * sSensStatus.fPreviousAccelX);
+		sSensStatus.fPrevVelX = fXdotCurrent;
+		fYdotCurrent = sSensStatus.fPrevVelY + (DT * sSensStatus.fPreviousAccelY);
+		sSensStatus.fPrevVely = fYdotCurrent;
+		fZdotCurrent = sSensStatus.fPrevVelZ + (DT * sSensStatus.fPreviousAccelZ);
+		sSensStatus.fPrevVelZ = fZdotCurrent;
+		fKdX = 1;
+		fKdY = 1;
+		fKdZ = 2;
+		fXdotdotDes = (fXdotDes - fXdotCurrent) * KdX;
+		fYdotdotDes = (fYdotDes - fYdotCurrent) * KdY;
+		fZdotdotDes = (fZdotDes - fZdotCurrent) * KdZ;
+		fFx = fXdotdotDes * sStatus.fMass;
+		fFy = fYdotdotDes * sStatus.fMass;
+		fFz = fZdotdotDes * sStatus.fMass;
+		fFMax = 238.3101;
+		if (fFz>fFMax){
+			fFzSat = fFMax;
+		}else if (fFz<-9.8*sStatus.fMass){
+			fFzSat = -9.8*sStatus.fMass;
+		}else{
+			fFzSat = fFz;
+		}
+		fThrust = sqrt((sSensStatus.fCurrentAccelX * sSensStatus.fCurrentAccelX) + (sSensStatus.fCurrentAccelY * sSensStatus.fCurrentAccelY) + (sSensStatus.fCurrentAccelZ * sSensStatus.fCurrentAccelZ)) - 1;
+		fRollDes = fFy / fThrust;
+		fPitchdes = -fFx / fThrust;
+		fYawdes = 0;
+		fKpR = 2.09974943882214;
+		fKpP = 2.09974943882214;
+		fKpYa = 2.09974943882214;
+		fRolldotDes = (fRollDes - sStatus.fRoll) * fKpR;
+		fPitchdotDes = (fPitchDes - sStatus.fPitch) * fKpP;
+		fYawdotDes = (fYawDes - sStatus.fYaw) * fKpYa;
+		fKdR = 4;
+		fKdP = 4;
+		fKdYa = 4;
+		fRolldotdotDes = (fRolldotDes - sSensStatus.fCurrentGyroX) * fKdR;
+		fPitchdotdotDes = (fPitchdotDes - sSensStatus.fCurrentGyroY) * fKdP;
+		fYawdotdotDes = (fYawdotDes - sSensStatus.fCurrentGyroZ) * fKdYa;
+		fMatThdotdot [1][3] = {fRolldotdotDes,fPitchdotdotDes,fYawdotdotDes};
+		fMatTorque[1][3] = fMatI * fMatThdotdot;
+		fMatTot[1][4] = {fMatTorque,fFzSat };
+		fThrustDes[1][4] = fMatBinv * fMatTot; 
 	} else {
 		//
 		// Radio data is bad. Set the current location as the target location.
