@@ -58,13 +58,13 @@
 #define CONSOLE_ACTIVATED true
 #define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
-#define GNDMTRS_ACTIVATED true
+#define GNDMTRS_ACTIVATED false
 #define SECONDARY_ATTITUDE false
 #define ULTRASONIC_ACTIVATED false
 #define SOLENOIDS_ACTIVATED false
-#define IMU_ACTIVATED true
+#define IMU_ACTIVATED false
 #define ALTIMETER_ACTIVATED false
-#define AIRMTRS_ACTIVATED false
+#define AIRMTRS_ACTIVATED true
 
 #define ONEG 16384
 #define SPEEDIS120MHZ true
@@ -627,18 +627,18 @@ int main(void) {
 		if (g_BME280Ready)
 			ProcessBME280();
 
-		if (!sStatus.bMode) {
-			if (sStatus.bFlyOrDrive)
+		//if (!sStatus.bMode) {
+			//if (sStatus.bFlyOrDrive)
 				ManualFlyUpdate();
-			else
-				ManualDriveUpdate();
-		}
-		else {
-			if (sStatus.bFlyOrDrive)
-				AutoFlyUpdate();
-			else
-				AutoDriveUpdate();
-		}
+			//else
+			//	ManualDriveUpdate();
+	//	}
+	//	else {
+	//		if (sStatus.bFlyOrDrive)
+		//		AutoFlyUpdate();
+			//else
+				//AutoDriveUpdate();
+	//	}
 
 	}
 	//
