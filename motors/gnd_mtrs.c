@@ -149,11 +149,11 @@ void Rx24FWrite(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN,
 
     UARTCharPutNonBlocking(UART_BASE, checkSum);
 
-    SysCtlDelay(120000000 / 500 / 3);
+    //SysCtlDelay(120000000 / 500 / 3);
 
     //
     // Return the direction pin to low.
-    GPIOPinWrite(GPIO_BASE, GPIO_PIN, 0x00);
+   // GPIOPinWrite(GPIO_BASE, GPIO_PIN, 0x00);
 }
 
 /*
