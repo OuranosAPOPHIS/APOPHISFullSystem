@@ -150,7 +150,7 @@
 
 #define RADIO_TIMER TIMER0_BASE
 #define RADIO_TIMER_INT INT_TIMER0A
-#define RADIO_TIMER_RATE 20
+#define RADIO_TIMER_RATE 10
 #define GS_RADIO_RATE 3
 
 /*
@@ -180,8 +180,6 @@
 #define SP4_CHANNEL ADC_CTL_CH0
 #define SP5_CHANNEL ADC_CTL_CH8
 #define SP_INT INT_ADC1SS0
-
-
 
 /*
  * Ultrasonic Sensor Peripheral Defines

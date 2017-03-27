@@ -42,6 +42,7 @@
 #include "motors/gnd_mtrs.h"
 
 #define APOPHIS false
+#define CLOCK_PIOSC 16000000
 
 //*****************************************************************************
 //
@@ -67,7 +68,6 @@ extern void BME280IntHandler(void);
 extern void SendPacket(void);
 extern void RadioTimeoutIntHandler(void);
 extern void DCMUpdateTimer(void);
-extern void UpdateTrajectory(void);
 extern void MMA8452QIntHandler(void);
 
 /*
@@ -134,7 +134,7 @@ void InitConsole(void) {
 
 	//
 	// Initialize the UART for console I/O.
-	UARTStdioConfig(0, 115200, 16000000);
+	UARTStdioConfig(0, 115200, CLOCK_PIOSC);
 
 	//
 	// Enable the UART interrupt.
@@ -192,7 +192,7 @@ void InitRadio(uint32_t SysClockSpeed) {
 	// Configure the timer for sending radio packets.
 	TimerClockSourceSet(RADIO_TIMER, TIMER_CLOCK_PIOSC);
 	TimerConfigure(RADIO_TIMER, TIMER_CFG_PERIODIC);
-	TimerLoadSet(RADIO_TIMER, TIMER_A, 16000000 / RADIO_TIMER_RATE);
+	TimerLoadSet(RADIO_TIMER, TIMER_A, CLOCK_PIOSC / RADIO_TIMER_RATE);
 
 	//
 	// Configure the interrupts for the timer.
@@ -204,8 +204,9 @@ void InitRadio(uint32_t SysClockSpeed) {
 	//
 	// Configure the timer for radio timeout.
 	// This will detect loss of radio communication.
+	TimerClockSourceSet(RADIO_TIMER_CHECK, TIMER_CLOCK_PIOSC);
 	TimerConfigure(RADIO_TIMER_CHECK, TIMER_CFG_PERIODIC);
-	TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, SysClockSpeed / GS_RADIO_RATE * 2);
+	TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, CLOCK_PIOSC / GS_RADIO_RATE);
 
 	//
 	// Configure the interrupts for the timer.
@@ -648,7 +649,9 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
 	TimerClockSourceSet(DCM_TIMER, TIMER_CLOCK_PIOSC);
 	TimerConfigure(DCM_TIMER, TIMER_CFG_SPLIT_PAIR | TIMER_CFG_A_PERIODIC |
 			TIMER_CFG_B_PERIODIC);
-	TimerLoadSet(DCM_TIMER, TIMER_A, 16000000 / DCM_UPDATE_RATE);
+	TimerLoadSet(DCM_TIMER, TIMER_A, CLOCK_PIOSC / DCM_UPDATE_RATE);
+	TimerLoadSet(UPDATE_TIMER, TIMER_B, CLOCK_PIOSC / UPDATE_TRAJECTORY_RATE);
+
 
 	//
 	// Configure the interrupts for the timer.
@@ -656,6 +659,10 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
 	TimerIntEnable(DCM_TIMER, TIMER_TIMA_TIMEOUT);
 	IntEnable(DCM_TIMER_INT);
 	TimerIntRegister(DCM_TIMER, TIMER_A, DCMUpdateTimer);
+
+	TimerIntClear(UPDATE_TIMER, TIMER_TIMB_TIMEOUT);
+	TimerIntEnable(UPDATE_TIMER, TIMER_TIMB_TIMEOUT);
+	IntEnable(UPDATE_TIMER_INT);
 
 	//
 	// Before calling the BMI160 initialize function, make sure the I2C
@@ -669,7 +676,7 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
 	// +/-2g setting on the accelerometer and 2000 deg/s for the gyro.
 	InitBMI160(BOOST_I2C, BMI160_ACC_100_HZ, BMI160_ACC_RANGE_2G,
 			BMI160_GYR_100_HZ,
-			BMI160_GYR_RATE_2000, BMI160_MAG_31_HZ, offsetCompensation,
+			BMI160_GYR_RATE_125, BMI160_MAG_31_HZ, offsetCompensation,
 			SysClockSpeed);
 
 	//

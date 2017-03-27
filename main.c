@@ -52,23 +52,29 @@
 //
 //*****************************************************************************
 
-#define DEBUG true
+#define DEBUG false
 #define APOPHIS false
 
 #define CONSOLE_ACTIVATED true
 #define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
-#define GNDMTRS_ACTIVATED false
+#define GNDMTRS_ACTIVATED true
 #define SECONDARY_ATTITUDE false
 #define ULTRASONIC_ACTIVATED false
 #define SOLENOIDS_ACTIVATED false
-#define IMU_ACTIVATED false
+#define IMU_ACTIVATED true
 #define ALTIMETER_ACTIVATED false
 #define AIRMTRS_ACTIVATED true
 
-#define ONEG 16384
 #define SPEEDIS120MHZ true
 #define DT 0.01
+
+//
+// The number of LSB per degree/s for 125 degrees/s.
+#define GYROLSB 262.4
+#define ACCELLSB 16384
+#define MAGLSB 16
+
 //*****************************************************************************
 //
 // Function prototypes
@@ -146,6 +152,9 @@ typedef struct {
 	float fCurrentAccelX;		// Current Acceleration in X direction
 	float fCurrentAccelY;		// Current Acceleration in Y direction
 	float fCurrentAccelZ;		// Current Acceleration in Z direction
+	float fPreviousAccelX;
+	float fPreviousAccelY;
+	float fPreviousAccelZ;
 	float fPrevVelX;
 	float fPrevVelY;
 	float fPrevVelZ;
@@ -157,6 +166,8 @@ typedef struct {
 	float fCurrentGyroZ;
 } SensorStatus;
 
+//
+// Structure for all of the motor throttles.
 typedef struct {
 	uint16_t ui16GndMtrLWThrottle;
 	uint16_t ui16GndMtrRWThrottle;
@@ -185,13 +196,7 @@ SystemStatus sStatus;
 
 //
 // Initialize the sensor state.
-SensorStatus sSensStatus = 0;
-sSensStatus.fPrevVelX = 0;
-sSensStatus.fPrevVelY = 0;
-sSensStatus.fPrevVelZ = 0;
-sSensStatus.fPrevPosX = 0;
-sSensStatus.fPrevPosY = 0;
-sSensStatus.fPrevPosZ = 0;
+SensorStatus sSensStatus;
 
 //
 // Global Instance structure to manage the DCM state.
@@ -298,22 +303,9 @@ uint8_t g_UltraSonicSensor = 0;
 bool g_IMUDataFlag = false;
 
 //
-// The number of LSB per g for +/- 2g's.
-float g_accelLSBg = 16384;
-
-//
-// The number of LSB per degree/s for 2000 degrees/s.
-float g_fGyroLSB = 16.4;
-
-//
-// Float conversion for mag data.
-float g_fMagLSB = 16;
-
-//
 // Offset compensation data for the accel and gyro.
 uint8_t g_offsetData[7] = { 0 };
 int16_t g_GyroBias[3] = { 0 };
-int16_t g_AccelBias[3] = { 0 };
 
 //
 // Calculated bias for mag from MATLAB in uTeslas.
@@ -428,7 +420,7 @@ int main(void) {
 	ButtonsInit();
 
 	//
-	// Initialize the Console if turned on.
+	// Initialize the Console.
 	InitConsole();
 	UARTprintf("Clock speed: %d\r\n", g_SysClockSpeed);
 
@@ -484,12 +476,12 @@ int main(void) {
 #endif
 
 	//
-	// Calculate zerothrottle corresponding to 1 ms pulse.
+	// Calculate zerothrottle corresponding to a 1 ms PWM pulse.
 	speed = (g_SysClockSpeed / PWM_FREQUENCY / 64);
 	g_ui32ZeroThrottle = (speed * 1 * PWM_FREQUENCY) / 1000;
 	g_ui32MaxThrottle = (speed * 2 * PWM_FREQUENCY) / 1000;
 	g_ui32ThrottleIncrement = g_ui32ZeroThrottle / 50;
-	g_ui32ZeroThrottle += g_ui32ThrottleIncrement * 3;
+	g_ui32ZeroThrottle += g_ui32ThrottleIncrement * 5;
 
 	//
 	// Initialize the air motors if activated.
@@ -498,7 +490,7 @@ int main(void) {
 #endif
 
 	//
-	// Initialize the BMI160 if enabled.
+	// Initialize the BMI160 IMU if enabled.
 #if IMU_ACTIVATED
 	InitIMU(g_SysClockSpeed, g_offsetData);
 
@@ -544,12 +536,37 @@ int main(void) {
 
 	//
 	// Initialize the state of the system.
+#if	GNDMTRS_ACTIVATED
 	sStatus.bFlyOrDrive = false;
+#else
+	sStatus.bFlyOrDrive = true;
+#endif
+
+#if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
+	if (sStatus.bFlyOrDrive) {
+		g_Pack.pack.movement = 'D';
+		TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
+	}
+	else {
+		g_Pack.pack.movement = 'F';
+		TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualFlyUpdate);
+	}
+#endif
+
 	sStatus.bMode = false;
 	sStatus.bPayDeployed = false;
 	sStatus.bRadioConnected = false;
 	sStatus.bTargetSet = false;
 	sStatus.fMass = 16;
+
+	//
+	// Initialize the sensor states.
+	sSensStatus.fPrevVelX = 0;
+	sSensStatus.fPrevVelY = 0;
+	sSensStatus.fPrevVelZ = 0;
+	sSensStatus.fPrevPosX = 0;
+	sSensStatus.fPrevPosY = 0;
+	sSensStatus.fPrevPosZ = 0;
 
 	//
 	// Initialize the throttle of the system.
@@ -569,10 +586,6 @@ int main(void) {
 	g_Pack.pack.Magic[0] = 0xFF;
 	g_Pack.pack.Magic[1] = 0xFF;
 	g_Pack.pack.Magic[2] = 0xFF;
-	if (sStatus.bFlyOrDrive)
-		g_Pack.pack.movement = 'D';
-	else
-		g_Pack.pack.movement = 'F';
 
 	//
 	// Before starting program, wait for a button press on either switch.
@@ -588,10 +601,6 @@ int main(void) {
 	// Initialize the DCM.
 	CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.2f, 0.6f, 0.2f);
 	g_bDCMStarted = false;
-
-	//
-	// Initialization complete. Enable interrupts.
-	IntMasterEnable();
 
 	//
 	// Turn off LED1, and enable the systick at 12 Hz to
@@ -623,8 +632,16 @@ int main(void) {
 #endif
 
 	//
+	// Enable trajectory timer.
+	TimerEnable(UPDATE_TIMER, TIMER_B);
+
+	//
 	// Print menu.
 	Menu('M');
+
+	//
+	// Initialization complete. Enable interrupts.
+	IntMasterEnable();
 
 	//
 	// Program start.
@@ -658,19 +675,6 @@ int main(void) {
 		// Check if pressure or temperature data is ready.
 		if (g_BME280Ready)
 			ProcessBME280();
-
-		//if (!sStatus.bMode) {
-			//if (sStatus.bFlyOrDrive)
-				ManualFlyUpdate();
-			//else
-			//	ManualDriveUpdate();
-	//	}
-	//	else {
-	//		if (sStatus.bFlyOrDrive)
-		//		AutoFlyUpdate();
-			//else
-				//AutoDriveUpdate();
-	//	}
 
 	}
 	//
@@ -1223,6 +1227,14 @@ void RadioTimeoutIntHandler(void) {
 	// Set the new status of the platform.
 	sStatus.bRadioConnected = false;
 	sStatus.bMode = true;
+
+	//
+	// Set the update trajectory to autonomous.
+	if (sStatus.bFlyOrDrive)
+		TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoFlyUpdate);
+	else
+		TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoDriveUpdate);
+
 }
 
 //*****************************************************************************
@@ -1459,7 +1471,6 @@ void Menu(char charReceived) {
 			g_PrintRawGPS = false;
 		else
 			g_PrintRawGPS = true;
-
 		break;
 	}
 	case 'B': // Print raw accel, gyro and mag data.
@@ -1468,7 +1479,6 @@ void Menu(char charReceived) {
 			g_PrintRawBMIData = false;
 		else
 			g_PrintRawBMIData = true;
-
 		break;
 	}
 	case 'M': // Print Menu.
@@ -1933,6 +1943,13 @@ void ProcessRadio(void) {
 		sStatus.bMode = true;
 
 		//
+		// Set the update trajectory to autonomous.
+		if (sStatus.bFlyOrDrive)
+			TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoFlyUpdate);
+		else
+			TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoDriveUpdate);
+
+		//
 		// The target location has now been set.
 		sStatus.bTargetSet = true;
 
@@ -1942,6 +1959,13 @@ void ProcessRadio(void) {
 		//
 		// Change the status of the platform.
 		sStatus.bMode = false;
+
+		//
+		// Set the update trajectory to manual.
+		if (sStatus.bFlyOrDrive)
+			TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualFlyUpdate);
+		else
+			TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
 
 		//
 		// Check if we are flying or driving and update the Status.
@@ -1969,6 +1993,13 @@ void ProcessRadio(void) {
 		//
 		// Change the mode to autonomous.
 		sStatus.bMode = true;
+
+		//
+		// Set the update trajectory to autonomous.
+		if (sStatus.bFlyOrDrive)
+			TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoFlyUpdate);
+		else
+			TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoDriveUpdate);
 
 		//
 		// Receiving bad data. Tell main to ignore it.
@@ -2123,9 +2154,14 @@ void SendPacket(void) {
 #endif
 
 	if (sStatus.bRadioConnected) {
-		g_Pack.pack.velX = g_fGyroData[0];
-		g_Pack.pack.velY = g_fGyroData[1];
-		g_Pack.pack.velZ = g_fGyroData[2];
+		g_Pack.pack.accelX = sSensStatus.fCurrentAccelX;
+		g_Pack.pack.accelY = sSensStatus.fCurrentAccelY;
+		g_Pack.pack.accelZ = sSensStatus.fCurrentAccelZ;
+
+		g_Pack.pack.velX = sSensStatus.fCurrentGyroX;
+		g_Pack.pack.velY = sSensStatus.fCurrentGyroY;
+		g_Pack.pack.velZ = sSensStatus.fCurrentGyroZ;
+
 		g_Pack.pack.posX = g_fMagData[0];
 		g_Pack.pack.posY = g_fMagData[1];
 		g_Pack.pack.posZ = g_fMagData[2];
@@ -2207,9 +2243,9 @@ void ProcessIMUData(void) {
 
 		//
 		// Convert to float for DCM and convert to teslas.
-		g_fMagData[0] = ((i8MagData[0] / g_fMagLSB) - g_MagBias[0]) / 1e6;
-		g_fMagData[1] = ((i8MagData[1] / g_fMagLSB) - g_MagBias[1]) / 1e6;
-		g_fMagData[2] = ((i8MagData[2] / g_fMagLSB) - g_MagBias[2]) / 1e6;
+		g_fMagData[0] = ((i8MagData[0] / MAGLSB) - g_MagBias[0]) / 1e6;
+		g_fMagData[1] = ((i8MagData[1] / MAGLSB) - g_MagBias[1]) / 1e6;
+		g_fMagData[2] = ((i8MagData[2] / MAGLSB) - g_MagBias[2]) / 1e6;
 
 		//
 		// Blink the LED 1 to indicate sensor is working.
@@ -2240,9 +2276,9 @@ void ProcessIMUData(void) {
 
 		//
 		// Convert data to float.
-		g_fGyroData[0] = ((float) (i16GyroData[0])) / g_fGyroLSB;
-		g_fGyroData[1] = ((float) (i16GyroData[1])) / g_fGyroLSB;
-		g_fGyroData[2] = ((float) (i16GyroData[2])) / g_fGyroLSB;
+		sSensStatus.fCurrentGyroX = ((float) (i16GyroData[0])) / GYROLSB;
+		sSensStatus.fCurrentGyroY = ((float) (i16GyroData[1])) / GYROLSB;
+		sSensStatus.fCurrentGyroZ = ((float) (i16GyroData[2])) / GYROLSB;
 
 		//
 		// Set the accelerometer data.
@@ -2252,9 +2288,9 @@ void ProcessIMUData(void) {
 
 		//
 		// Compute the accel data into floating point values.
-		g_Pack.pack.accelX = ((float) i16AccelData[0]) / g_accelLSBg;
-		g_Pack.pack.accelY = ((float) i16AccelData[1]) / g_accelLSBg;
-		g_Pack.pack.accelZ = ((float) i16AccelData[2]) / g_accelLSBg;
+		sSensStatus.fCurrentAccelX = ((float) i16AccelData[0]) / ACCELLSB;
+		sSensStatus.fCurrentAccelY = ((float) i16AccelData[1]) / ACCELLSB;
+		sSensStatus.fCurrentAccelZ = ((float) i16AccelData[2]) / ACCELLSB;
 	}
 
 	//
@@ -2262,6 +2298,7 @@ void ProcessIMUData(void) {
 	if (g_bDCMStarted == 0)
 		TimerEnable(DCM_TIMER, TIMER_A);
 
+#if DEBUG
 	//
 	// Print the raw data if turned on.
 	if (g_PrintRawBMIData && g_loopCount) {
@@ -2279,6 +2316,7 @@ void ProcessIMUData(void) {
 		// Reset loop count.
 		g_loopCount = false;
 	}
+#endif
 
 	//
 	// Reset the flag
@@ -2333,8 +2371,17 @@ void ProcessBME280(void) {
 //
 //*****************************************************************************
 void AutoFlyUpdate(void) {
+	uint32_t ui32Status;
 
-	float temp;
+	//
+	// Get the interrupt status.
+	ui32Status = TimerIntStatus(UPDATE_TIMER, true);
+
+	//
+	// Clear the interrupt.
+	TimerIntClear(UPDATE_TIMER, ui32Status);
+
+/*
 	float fXdotDes;
 	float fYdotDes;
 	float fZdotDes;
@@ -2359,8 +2406,8 @@ void AutoFlyUpdate(void) {
 	float fFx;
 	float fFy;
 	float fFz;
-	float fFzSat
-	float fFmax;
+	float fFzSat;
+	float fFMax;
 	float fThrust;
 	float fRollDes;
 	float fPitchDes;
@@ -2368,11 +2415,15 @@ void AutoFlyUpdate(void) {
 	float fRolldotDes;
 	float fPitchdotDes;
 	float fYawdotDes;
+	float fRolldotdotDes;
+	float fPitchdotdotDes;
+	float fYawdotdotDes;
 	float fMatThdotdot;
 	float fMatBinv;
 	float fMatTorque;
 	float fMatTot;
 	float fThrustDes;
+
 	//
 	// TODO: This is where the control law and stuff will go.
 	//
@@ -2389,15 +2440,16 @@ void AutoFlyUpdate(void) {
 
 		fKpX = 0.1;
 		fKpY = 1;
-		fKpZ = 0.075l;
-		fXdotDes = (sStatus.fCurrentLat - sStatus.fTargetLat) * (111.2 / 0.001) * KpX; //Each 0.001 degrees of latitude equates to 111.2 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
-		fYdotDes = (sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) * KpY; //Each 0.001 degrees of latitude equates to 91.51 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
-		fZdotDes = (-sStatus.fCurrentAlt - -sStatus.fTargetAlt) * KpZ;
+		fKpZ = 0.075;
+
+		fXdotDes = (sStatus.fCurrentLat - sStatus.fTargetLat) * (111.2 / 0.001) * fKpX; //Each 0.001 degrees of latitude equates to 111.2 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
+		fYdotDes = (sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) * fKpY; //Each 0.001 degrees of latitude equates to 91.51 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
+		fZdotDes = (-sStatus.fCurrentAlt - -sStatus.fTargetAlt) * fKpZ;
 
 		fXdotCurrent = sSensStatus.fPrevVelX + (DT * sSensStatus.fPreviousAccelX);
 		sSensStatus.fPrevVelX = fXdotCurrent;
 		fYdotCurrent = sSensStatus.fPrevVelY + (DT * sSensStatus.fPreviousAccelY);
-		sSensStatus.fPrevVely = fYdotCurrent;
+		sSensStatus.fPrevVelY = fYdotCurrent;
 		fZdotCurrent = sSensStatus.fPrevVelZ + (DT * sSensStatus.fPreviousAccelZ);
 		sSensStatus.fPrevVelZ = fZdotCurrent;
 
@@ -2405,9 +2457,9 @@ void AutoFlyUpdate(void) {
 		fKdY = 1;
 		fKdZ = 2;
 
-		fXdotdotDes = (fXdotDes - fXdotCurrent) * KdX;
-		fYdotdotDes = (fYdotDes - fYdotCurrent) * KdY;
-		fZdotdotDes = (fZdotDes - fZdotCurrent) * KdZ;
+		fXdotdotDes = (fXdotDes - fXdotCurrent) * fKdX;
+		fYdotdotDes = (fYdotDes - fYdotCurrent) * fKdY;
+		fZdotdotDes = (fZdotDes - fZdotCurrent) * fKdZ;
 
 		fFx = fXdotdotDes * sStatus.fMass;
 		fFy = fYdotdotDes * sStatus.fMass;
@@ -2424,8 +2476,8 @@ void AutoFlyUpdate(void) {
 
 		fThrust = sqrt((sSensStatus.fCurrentAccelX * sSensStatus.fCurrentAccelX) + (sSensStatus.fCurrentAccelY * sSensStatus.fCurrentAccelY) + (sSensStatus.fCurrentAccelZ * sSensStatus.fCurrentAccelZ)) - 1;
 		fRollDes = fFy / fThrust;
-		fPitchdes = -fFx / fThrust;
-		fYawdes = 0;
+		fPitchDes = -fFx / fThrust;
+		fYawDes = 0;
 
 		fKpR = 2.09974943882214;
 		fKpP = 2.09974943882214;
@@ -2443,11 +2495,12 @@ void AutoFlyUpdate(void) {
 		fPitchdotdotDes = (fPitchdotDes - sSensStatus.fCurrentGyroY) * fKdP;
 		fYawdotdotDes = (fYawdotDes - sSensStatus.fCurrentGyroZ) * fKdYa;
 
-		fMatThdotdot [1][3] = {fRolldotdotDes,fPitchdotdotDes,fYawdotdotDes};
+// This matrix math is definitely wrong.
+		fMatThdotdot[1][3] = {fRolldotdotDes, fPitchdotdotDes, fYawdotdotDes};
 		fMatTorque[1][3] = fMatI * fMatThdotdot;
 		fMatTot[1][4] = {fMatTorque,fFzSat };
 
-		fThrustDes[1][4] = fMatBinv * fMatTot; 
+		fThrustDes[1][4] = fMatBinv * fMatTot;
 
 	} else {
 		//
@@ -2458,7 +2511,7 @@ void AutoFlyUpdate(void) {
 		//
 		// TODO: Add some logic, so that if we lose radio contact, we
 		// don't necessarily crash...
-	}
+	} */
 	//
 	// Reset printing loop count for debugging.
 	g_PrintFlag = false;
@@ -2472,6 +2525,16 @@ void AutoFlyUpdate(void) {
 //*****************************************************************************
 void AutoDriveUpdate(void)
 {
+	uint32_t ui32Status;
+
+	//
+	// Get the interrupt status.
+	ui32Status = TimerIntStatus(UPDATE_TIMER, true);
+
+	//
+	// Clear the interrupt.
+	TimerIntClear(UPDATE_TIMER, ui32Status);
+
 	//
 	// TODO: This is where the control law and stuff will go.
 	//
@@ -2505,15 +2568,20 @@ void AutoDriveUpdate(void)
 //*****************************************************************************
 void ManualFlyUpdate(void)
 {
+	uint32_t ui32Status;
+
+	//
+	// Get the interrupt status.
+	ui32Status = TimerIntStatus(UPDATE_TIMER, true);
+
+	//
+	// Clear the interrupt.
+	TimerIntClear(UPDATE_TIMER, ui32Status);
 
 	float fDesiredRoll = 0.0f;
 	float fDesiredPitch = 0.0f;
 	//
 	// TODO: Figure out a good yaw rate.
-
-	if (g_PrintFlag) {
-		UARTprintf("Flying.\r\n");
-	}
 
 	//
 	// We are flying. Set the parameters sent from the radio.
@@ -2790,6 +2858,16 @@ void ManualFlyUpdate(void)
 //
 //*****************************************************************************
 void ManualDriveUpdate(void) {
+	uint32_t ui32Status;
+
+	//
+	// Get the interrupt status.
+	ui32Status = TimerIntStatus(UPDATE_TIMER, true);
+
+	//
+	// Clear the interrupt.
+	TimerIntClear(UPDATE_TIMER, ui32Status);
+
 	uint8_t txBuffer[4];
 
 	//
