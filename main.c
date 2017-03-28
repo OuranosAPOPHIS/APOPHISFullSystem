@@ -480,8 +480,8 @@ int main(void) {
 	speed = (g_SysClockSpeed / PWM_FREQUENCY / 64);
 	g_ui32ZeroThrottle = (speed * 1 * PWM_FREQUENCY) / 1000;
 	g_ui32MaxThrottle = (speed * 2 * PWM_FREQUENCY) / 1000;
-	g_ui32ThrottleIncrement = g_ui32ZeroThrottle / 50;
-	g_ui32ZeroThrottle += g_ui32ThrottleIncrement * 5;
+	g_ui32ThrottleIncrement = g_ui32ZeroThrottle / 200;
+	g_ui32ZeroThrottle += g_ui32ThrottleIncrement * 37;
 
 	//
 	// Initialize the air motors if activated.
@@ -2588,50 +2588,24 @@ void ManualFlyUpdate(void)
 	// Get the throttle.
 	int32_t ui32Throttle = (int32_t) (g_sRxPack.sControlPacket.throttle);
 
-	if (g_sRxPack.sControlPacket.throttle == 0) {
-		sThrottle.fAirMtr1Throttle = g_ui32ZeroThrottle;
-		sThrottle.fAirMtr2Throttle = g_ui32ZeroThrottle;
-		sThrottle.fAirMtr3Throttle = g_ui32ZeroThrottle;
-		sThrottle.fAirMtr4Throttle = g_ui32ZeroThrottle;
-
-#if !APOPHIS
-		sThrottle.fAirMtr5Throttle = g_ui32ZeroThrottle;
-		sThrottle.fAirMtr6Throttle = g_ui32ZeroThrottle;
+#if DEBUG
+	UARTprintf("Throttle: %d\r\n", ui32Throttle);
 #endif
-	} else {
-		if (g_sRxPack.sControlPacket.throttle <= 0) {
-			sThrottle.fAirMtr1Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE1;
-			sThrottle.fAirMtr2Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE2;
-			sThrottle.fAirMtr3Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE3;
-			sThrottle.fAirMtr4Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE4;
 
-#if !APOPHIS
-			sThrottle.fAirMtr5Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE5;
-			sThrottle.fAirMtr6Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE6;
-#endif
-		} else {
-			sThrottle.fAirMtr1Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
-			sThrottle.fAirMtr2Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
-			sThrottle.fAirMtr3Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
-			sThrottle.fAirMtr4Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
+	//
+	// Check to make sure throttle isn't negative.
+	if (ui32Throttle < 0)
+		ui32Throttle = 0;
 
-#if !APOPHIS
-			sThrottle.fAirMtr5Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
-			sThrottle.fAirMtr6Throttle = (ui32Throttle
-					* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;
-		}
-#endif
+	sThrottle.fAirMtr1Throttle = (ui32Throttle
+			* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE1;
+	sThrottle.fAirMtr2Throttle = (ui32Throttle
+			* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE2;
+	sThrottle.fAirMtr3Throttle = (ui32Throttle
+			* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE3;
+	sThrottle.fAirMtr4Throttle = (ui32Throttle
+			* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE4;
+
 		//
 		// Get the yaw value.
 		int32_t i32Yaw = (int32_t) (g_sRxPack.sControlPacket.yaw);
@@ -2654,7 +2628,7 @@ void ManualFlyUpdate(void)
 		// Calculate the roll, pitch and yaw.
 		fDesiredRoll = g_sRxPack.sControlPacket.roll / 100.0f * 25.0f;
 		fDesiredPitch = g_sRxPack.sControlPacket.pitch / 100.0f * 25.0f;
-
+/*
 		//
 		// Check if the pitch error is less than 0.5 or -0.5.
 		if (((sStatus.fPitch - fDesiredPitch) > 0.5f)
@@ -2831,7 +2805,7 @@ void ManualFlyUpdate(void)
 				sThrottle.fAirMtr4Throttle += 5 * g_ui32ThrottleIncrement;
 			}
 		}
-	}
+	} */
 
 	//
 	// Set the new throttles for the motors.
