@@ -164,6 +164,7 @@ typedef struct {
 	float fCurrentGyroX;
 	float fCurrentGyroY;
 	float fCurrentGyroZ;
+	float fThrust;
 } SensorStatus;
 
 //
@@ -567,6 +568,7 @@ int main(void) {
 	sSensStatus.fPrevPosX = 0;
 	sSensStatus.fPrevPosY = 0;
 	sSensStatus.fPrevPosZ = 0;
+	sSensStatus.fThrust = 0;
 
 	//
 	// Initialize the throttle of the system.
@@ -2474,9 +2476,8 @@ void AutoFlyUpdate(void) {
 			fFzSat = fFz;
 		}
 
-		fThrust = sqrt((sSensStatus.fCurrentAccelX * sSensStatus.fCurrentAccelX) + (sSensStatus.fCurrentAccelY * sSensStatus.fCurrentAccelY) + (sSensStatus.fCurrentAccelZ * sSensStatus.fCurrentAccelZ)) - 1;
-		fRollDes = fFy / fThrust;
-		fPitchDes = -fFx / fThrust;
+		fRollDes = fFy / sSensStatus.fThrust;
+		fPitchDes = -fFx / sSensStatus.fThrust;
 		fYawDes = 0;
 
 		fKpR = 2.09974943882214;
@@ -2501,7 +2502,7 @@ void AutoFlyUpdate(void) {
 		fMatTot[1][4] = {fMatTorque,fFzSat };
 
 		fThrustDes[1][4] = fMatBinv * fMatTot;
-
+		sSensStatus.fThrust = fThrustDes[1] + fThrustDes[2] + fThrustDes[3] + fThrustDes[4]
 	} else {
 		//
 		// Radio data is bad. Set the current location as the target location.
