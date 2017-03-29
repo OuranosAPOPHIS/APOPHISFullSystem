@@ -2540,12 +2540,50 @@ void AutoDriveUpdate(void)
 	// TODO: This is where the control law and stuff will go.
 	//
 	// Check if radio is sending good data.
+	
+	float fXdotDes;
+	float fYdotDes;
+	float fKpR;
+	float fXdotCurrent;
+	float fYdotCurrent;
+	float fXdotdotDes;
+	float fKdR;
+	float fThDes;
+	float fThdotDes;
+	float fKpTh;
+	float fThdotdotDes;
+	float fKdTh;
+	float fRadiusWheel;
+	float fKt;
+	float fResistanceMotor;
+	float fVoltLeft;
+	float fVoltRight;
+		
 	if (sStatus.bTargetSet) {
 		//
 		// Radio data is good, calculate a trajectory.
-
-		//
-		// TODO: Calculate a trajectory.
+		fKpR = 0.08;
+		fXdotDes = (sStatus.fCurrentLat - sStatus.fTargetLat) * (111.2 / 0.001) * fKpR; //Each 0.001 degrees of latitude equates to 111.2 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
+		fYdotDes = (sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) * fKpR; //Each 0.001 degrees of latitude equates to 91.51 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
+		fXdotCurrent = sSensStatus.fPrevVelX + (DT * sSensStatus.fPreviousAccelX); //Are Accelerations im body or imirtia; frame, Inirtial was assumed
+		sSensStatus.fPrevVelX = fXdotCurrent;
+		fYdotCurrent = sSensStatus.fPrevVelY + (DT * sSensStatus.fPreviousAccelY);
+		sSensStatus.fPrevVelY = fYdotCurrent;
+		fKdR = 10;
+		fXdotdotDes = (fXdotDes - fXdotCurrent) * fKdR;
+		if ((sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) > 2.5 && (sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) < -2.5){
+			fThDes = atan(((sStatus.fCurrentLat - sStatus.fTargetLat) * (111.2 / 0.001)) / ((sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001)));
+			fKpTh = 0.8;
+			fThdotDes = (fThdes - sStatus.fYaw) * fKpTh;
+			fKdTh = 3;
+			fThdotdotDes = (fThdotDes - sSensStatus.fCurrentGyroZ) * fKdTh;
+		}else{
+			fRadiusWheel = ;
+			fKt = ;
+			fResistanceMotor = ;
+			fVoltLeft = (((fXdotdotDes / (2 * sStatus.fMass)) * fRadiusWheel) / fKt) * fResistanceMotor;
+		}
+		
 	} else {
 		//
 		// Radio data is bad. Set the current location as the target location.
