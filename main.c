@@ -42,9 +42,12 @@
 #include "APOPHIS_pin_map.h"
 #include "master_defines.h"
 #include "packet_format.h"
+
 #include "sensors/bmi160.h"
 #include "sensors/i2c_driver.h"
 #include "sensors/bme280.h"
+#include "sensors/accel_gyro_cal_data.h"
+
 #include "motors/gnd_mtrs.h"
 
 
@@ -2190,6 +2193,8 @@ void ProcessIMUData(void) {
 	int16_t i16AccelData[3];
 	int16_t i16GyroData[3];
 	int16_t i8MagData[3];
+	float fAccelDataUnCal[3];
+	float fGyroDataUnCal[3];
 
 	//
 	// First check the status for which data is ready.
@@ -2246,9 +2251,15 @@ void ProcessIMUData(void) {
 
 		//
 		// Convert data to float.
-		sSensStatus.fCurrentGyroX = ((float) (i16GyroData[0])) / GYROLSB;
-		sSensStatus.fCurrentGyroY = ((float) (i16GyroData[1])) / GYROLSB;
-		sSensStatus.fCurrentGyroZ = ((float) (i16GyroData[2])) / GYROLSB;
+		fGyroDataUnCal[0] = (((float) (i16GyroData[0])) / GYROLSB) - BGX;
+		fGyroDataUnCal[1] = (((float) (i16GyroData[1])) / GYROLSB) - BGY;
+		fGyroDataUnCal[2] = (((float) (i16GyroData[2])) / GYROLSB) - BGZ;
+
+		//
+		// Calculate the calibrated gyro data.
+		sSensStatus.fCurrentGyroX = fGyroDataUnCal[0] * SGX + fGyroDataUnCal[1] * MGXY + fGyroDataUnCal[2] * MGXZ;
+		sSensStatus.fCurrentGyroY = fGyroDataUnCal[0] * MGYX + fGyroDataUnCal[1] * SGY + fGyroDataUnCal[2] * MGYZ;
+		sSensStatus.fCurrentGyroZ = fGyroDataUnCal[0] * MGZX + fGyroDataUnCal[1] * MGZY + fGyroDataUnCal[2] * SGZ;
 
 		//
 		// Set the accelerometer data.
@@ -2258,9 +2269,15 @@ void ProcessIMUData(void) {
 
 		//
 		// Compute the accel data into floating point values.
-		sSensStatus.fCurrentAccelX = ((float) i16AccelData[0]) / ACCELLSB;
-		sSensStatus.fCurrentAccelY = ((float) i16AccelData[1]) / ACCELLSB;
-		sSensStatus.fCurrentAccelZ = ((float) i16AccelData[2]) / ACCELLSB;
+		fAccelDataUnCal[0] = (((float) i16AccelData[0]) / ACCELLSB) - BAX;
+		fAccelDataUnCal[1] = (((float) i16AccelData[1]) / ACCELLSB) - BAY;
+		fAccelDataUnCal[2] = (((float) i16AccelData[2]) / ACCELLSB) - BAZ;
+
+		//
+		// Calculate the calibrated accelerometer data.
+		sSensStatus.fCurrentAccelX = fAccelDataUnCal[0] * SAX + fAccelDataUnCal[1] * MAXY + fAccelDataUnCal[2] * MAXZ;
+		sSensStatus.fCurrentAccelY = fAccelDataUnCal[0] * MAYX + fAccelDataUnCal[1] * SAY + fAccelDataUnCal[2] * MAYZ;
+		sSensStatus.fCurrentAccelZ = fAccelDataUnCal[0] * MAZX + fAccelDataUnCal[1] * MAZY + fAccelDataUnCal[2] * SAZ;
 	}
 
 	//
@@ -2508,7 +2525,7 @@ void AutoDriveUpdate(void)
 	// TODO: This is where the control law and stuff will go.
 	//
 	// Check if radio is sending good data.
-	
+	/*
 	float fXdotDes;
 	float fYdotDes;
 	float fKpR;
@@ -2562,6 +2579,8 @@ void AutoDriveUpdate(void)
 		// TODO: Add some logic, so that if we lose radio contact, we
 		// don't necessarily crash...
 	}
+	*/
+
 	//
 	// Reset printing loop count for debugging.
 	g_PrintFlag = false;
