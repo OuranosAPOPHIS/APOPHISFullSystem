@@ -15,15 +15,15 @@
 /*
  * LED Initializations.
  */
-void InitLED(uint32_t SysClockSpeed);
+void InitLED(void);
 
 /*
  * UART Initializations
  */
 void InitConsole(void);
-void InitRadio(uint32_t SysClockSpeed);
-void InitGPS(uint32_t SysClockSpeed);
-void InitGndMotors(uint32_t SysClockSpeed);
+void InitRadio(void);
+void InitGPS(void);
+void InitGndMotors(void);
 
 
 /*
@@ -39,18 +39,18 @@ void InitUltraSonicSensor(void);
 /*
  * Solenoid Enable Pins Initializations
  */
-void InitSolenoidEnablePins(uint32_t SysClockSpeed);
+void InitSolenoidEnablePins(void);
 
 /*
  * BoostXL-Sensors Initializations
  */
-void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation);
-void InitAltimeter(uint32_t SysClockSpeed, int8_t *offsetValues);
+void InitIMU(uint8_t *offsetCompensation);
+void InitAltimeter(int8_t *offsetValues);
 
 /*
  * PWM air motor initializations.
  */
-uint32_t InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle);
-uint32_t InitServoMtrs(uint32_t sysClockSpeed);
+uint32_t InitAirMtrs(uint32_t zeroThrottle);
+uint32_t InitServoMtrs(void);
 
 #endif /* INITIALIZATIONS_H_ */

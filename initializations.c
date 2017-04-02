@@ -39,6 +39,7 @@
 #include "sensors/bme280.h"
 #include "sensors/mma8452q.h"
 #include "sensors/i2c_driver.h"
+
 #include "motors/gnd_mtrs.h"
 
 #include "master_defines.h"
@@ -80,7 +81,7 @@ extern void MMA8452QIntHandler(void);
 // PF0, and PF4.
 //
 //*****************************************************************************
-void InitLED(uint32_t SysClockSpeed) {
+void InitLED(void) {
 	//
 	// Initialize the GPIO port for the LEDs.
 	SysCtlPeripheralEnable(LED_GPIO_PERIPH1);
@@ -94,7 +95,7 @@ void InitLED(uint32_t SysClockSpeed) {
 	//
 	// Initialize a 1 second SysTick for blinking the LED pin 4 to indicate
 	// program running.
-	SysTickPeriodSet(SysClockSpeed);
+	SysTickPeriodSet(SYSCLOCKSPEED);
 
 	//
 	// Register the interrupt handler for blinking the LED and enable it.
@@ -150,7 +151,7 @@ void InitConsole(void) {
 // the 3D Robotics Radio V2.
 //
 //*****************************************************************************
-void InitRadio(uint32_t SysClockSpeed) {
+void InitRadio(void) {
 
 #if DEBUG
 	//
@@ -177,7 +178,7 @@ void InitRadio(uint32_t SysClockSpeed) {
 
 	//
 	// Configure UART6 for 57600, 8-N-1 operation.
-	UARTConfigSetExpClk(RADIO_UART, SysClockSpeed, 57600,
+	UARTConfigSetExpClk(RADIO_UART, SYSCLOCKSPEED, 57600,
 			(UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
 			UART_CONFIG_PAR_NONE));
 
@@ -232,7 +233,7 @@ void InitRadio(uint32_t SysClockSpeed) {
 // the GP-20U7 GPS module.
 //
 //*****************************************************************************
-void InitGPS(uint32_t SysClockSpeed) {
+void InitGPS(void) {
 
 #if DEBUG
 	//
@@ -258,7 +259,7 @@ void InitGPS(uint32_t SysClockSpeed) {
 
 	//
 	// Configure UART6 for 9600, 8-N-1 operation.
-	UARTConfigSetExpClk(GPS_UART, SysClockSpeed, 9600,
+	UARTConfigSetExpClk(GPS_UART, SYSCLOCKSPEED, 9600,
 			(UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
 			UART_CONFIG_PAR_NONE));
 
@@ -281,7 +282,7 @@ void InitGPS(uint32_t SysClockSpeed) {
 // the two Robotis RX24F motors.
 //
 //*****************************************************************************
-void InitGndMotors(uint32_t SysClockSpeed) {
+void InitGndMotors(void) {
 
 #if DEBUG
 	//
@@ -323,10 +324,10 @@ void InitGndMotors(uint32_t SysClockSpeed) {
 
 	//
 	// Configure UART6 for 57,600, 8-N-1 operation.
-	UARTConfigSetExpClk(GNDMTR1_UART, SysClockSpeed, 57600,
+	UARTConfigSetExpClk(GNDMTR1_UART, SYSCLOCKSPEED, 57600,
 			(UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
 			UART_CONFIG_PAR_NONE));
-	UARTConfigSetExpClk(GNDMTR2_UART, SysClockSpeed, 57600,
+	UARTConfigSetExpClk(GNDMTR2_UART, SYSCLOCKSPEED, 57600,
 			(UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
 			UART_CONFIG_PAR_NONE));
 
@@ -565,7 +566,7 @@ void InitUltraSonicSensor(void) {
 /*
  * Initializations for Solenoid Enable Pins
  */
-void InitSolenoidEnablePins(uint32_t SysClockSpeed) {
+void InitSolenoidEnablePins(void) {
 	//
 	// Enable the peripheral used by the Solenoid Enable pins.
 	SysCtlPeripheralEnable(SOLENOID_PERIPH1);
@@ -583,7 +584,7 @@ void InitSolenoidEnablePins(uint32_t SysClockSpeed) {
 	//
 	// Configure the timer to run for 5 seconds.
 	TimerConfigure(SOLENOID_TIMER, TIMER_CFG_ONE_SHOT);
-	TimerLoadSet(SOLENOID_TIMER, TIMER_A, SysClockSpeed * 5);
+	TimerLoadSet(SOLENOID_TIMER, TIMER_A, SYSCLOCKSPEED * 5);
 
 	//
 	// Configure the interrupts for the timer.
@@ -602,7 +603,7 @@ void InitSolenoidEnablePins(uint32_t SysClockSpeed) {
  * PC7 - INT1
  */
 
-void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
+void InitIMU(uint8_t *offsetCompensation) {
 
 #if DEBUG
 	UARTprintf("Initializing IMU...\n\r");
@@ -652,7 +653,7 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
 
 	//
 	// Configure and Initialize the I2C bus at 400 kpbs.
-	I2CMasterInitExpClk(BOOST_I2C, SysClockSpeed, true);
+	I2CMasterInitExpClk(BOOST_I2C, SYSCLOCKSPEED, true);
 
 	//
 	// Enable the I2C module.
@@ -697,7 +698,7 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
 	InitBMI160(BOOST_I2C, BMI160_ACC_100_HZ, BMI160_ACC_RANGE_2G,
 			BMI160_GYR_100_HZ,
 			BMI160_GYR_RATE_125, BMI160_MAG_31_HZ, offsetCompensation,
-			SysClockSpeed);
+			SYSCLOCKSPEED);
 
 	//
 	// Turn off interrupts, since I2CWrite turns them on.
@@ -717,7 +718,7 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
  * navigation. This results in an approximate
  * operational rate of 25Hz.
  */
-void InitAltimeter(uint32_t SysClockSpeed, int8_t *offsetValues) {
+void InitAltimeter(int8_t *offsetValues) {
 
 #if DEBUG
 	UARTprintf("Initializing BME280...\n\r");
@@ -733,7 +734,7 @@ void InitAltimeter(uint32_t SysClockSpeed, int8_t *offsetValues) {
 	//
 	// Configure the timer to run at 25 Hz.
 	TimerConfigure(BME280_TIMER, TIMER_CFG_ONE_SHOT);
-	TimerLoadSet(BME280_TIMER, TIMER_A, SysClockSpeed / 25);
+	TimerLoadSet(BME280_TIMER, TIMER_A, SYSCLOCKSPEED / 25);
 
 	//
 	// Configure the interrupts for the timer.
@@ -763,7 +764,7 @@ void InitAltimeter(uint32_t SysClockSpeed, int8_t *offsetValues) {
  * Initialization for the PWM module 0 for the
  * air motors. PWM M0 pins 0-3 wll be used.
  */
-uint32_t InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle) {
+uint32_t InitAirMtrs(uint32_t zeroThrottle) {
 	uint32_t speed;
 
 #if DEBUG
@@ -797,7 +798,7 @@ uint32_t InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle) {
 
 	//
 	// Frequency of PWM.
-	speed = (sysClockSpeed / 64 / PWM_FREQUENCY);
+	speed = (SYSCLOCKSPEED / 64 / PWM_FREQUENCY);
 
 	//
 	// Configure the PWM.
@@ -837,7 +838,7 @@ uint32_t InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle) {
 /*
  * Initialization for the secondary accelerometer.
  */
-void InitSecondaryAccel(uint32_t sysClockSpeed) {
+void InitSecondaryAccel(void) {
 
 #if DEBUG
 	UARTprintf("Initializing MMA8452Q...\n\r");
@@ -887,7 +888,7 @@ void InitSecondaryAccel(uint32_t sysClockSpeed) {
 
 	//
 	// Configure and Initialize the I2C bus at 400 kpbs.
-	I2CMasterInitExpClk(MMA8452Q_I2C, sysClockSpeed, true);
+	I2CMasterInitExpClk(MMA8452Q_I2C, SYSCLOCKSPEED, true);
 
 	//
 	// Enable the I2C module.
@@ -916,7 +917,7 @@ void InitSecondaryAccel(uint32_t sysClockSpeed) {
  * servo motors. PWM M0 pins 6-7 will be used on pins PK4 and PK5.
  * Returns: the speed of the PWM pulse in clock cycles.
  */
-uint32_t InitServoMtrs(uint32_t sysClockSpeed) {
+uint32_t InitServoMtrs(void) {
 	float speed = 0.0f;
 
 #if DEBUG
@@ -945,7 +946,7 @@ uint32_t InitServoMtrs(uint32_t sysClockSpeed) {
 
 	//
 	// Frequency of PWM.
-	speed = (sysClockSpeed / 64 / SERVO_FREQUENCY);
+	speed = (SYSCLOCKSPEED / 64 / SERVO_FREQUENCY);
 
 	//
 	// Configure the PWM generator for modules 6 and 7.

@@ -13,4 +13,23 @@
 
 #define DEBUG true
 
+#define RADIO_ACTIVATED true
+#define GPS_ACTIVATED false
+#define GNDMTRS_ACTIVATED false
+#define SECONDARY_ATTITUDE false
+#define ULTRASONIC_ACTIVATED false
+#define PAYLOAD_DEPLOY false
+#define IMU_ACTIVATED true
+#define ALTIMETER_ACTIVATED false
+#define AIRMTRS_ACTIVATED true
+
+#define SPEEDIS120MHZ true
+
+#if SPEEDIS120MHZ
+#define SYSCLOCKSPEED 120000000
+#else
+#define SYSCLOCKSPEED 16000000
+#endif
+
+
 #endif /* MASTER_DEFINES_H_ */

@@ -56,20 +56,8 @@
 // Defines
 //
 //*****************************************************************************
-
-//#define DEBUG true
-
-#define RADIO_ACTIVATED true
-#define GPS_ACTIVATED false
-#define GNDMTRS_ACTIVATED false
-#define SECONDARY_ATTITUDE false
-#define ULTRASONIC_ACTIVATED false
-#define PAYLOAD_DEPLOY false
-#define IMU_ACTIVATED true
-#define ALTIMETER_ACTIVATED false
-#define AIRMTRS_ACTIVATED true
-
-#define SPEEDIS120MHZ true
+//
+// Time step for the control law.
 #define DT 0.01
 
 //
@@ -281,10 +269,6 @@ uint32_t g_SysTickCount = 0;
 bool g_LED4On = false;
 
 //
-// Variable to store the system clock speed.
-uint32_t g_SysClockSpeed;
-
-//
 // Variable to store characters received from the PC.
 char g_CharConsole;
 
@@ -378,6 +362,18 @@ int32_t *g_p_t_fine = &g_t_fine;
 
 //*****************************************************************************
 //
+// Servo global variables.
+//
+//*****************************************************************************
+//
+// Starting and ending position of the deployment servo.
+uint32_t g_ui32ServoStartPosition = 0;
+uint32_t g_ui32ServoEndPosition = 0;
+
+uint32_t g_ui32ServoAngle = 0;
+
+//*****************************************************************************
+//
 // Start of program.
 //
 //*****************************************************************************
@@ -406,12 +402,12 @@ int main(void) {
 	//
 	// Set the clocking to run at 120 MHz.
 #if SPEEDIS120MHZ
-	g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN |
+	SysCtlClockFreqSet(SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN |
 	SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480, 120000000);
 #else
 	//
 	// Set the clocking to run at 16 MHz.
-	g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
+	SysCtlClockFreqSet(SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
 			SYSCTL_XTAL_16MHZ, 16000000);
 #endif
 
@@ -421,7 +417,7 @@ int main(void) {
 
 	//
 	// Before doing anything, initialize the LED.
-	InitLED(g_SysClockSpeed);
+	InitLED();
 
 	//
 	// Turn off all LEDs, in case one was left on.
@@ -442,25 +438,25 @@ int main(void) {
 #endif
 
 #if DEBUG
-	UARTprintf("Clock speed: %d\r\n", g_SysClockSpeed);
+	UARTprintf("Clock speed: %d\r\n", SYSCLOCKSPEED);
 #endif
 
 	//
 	// Initialize the radio if turned on.
 #if RADIO_ACTIVATED
-	InitRadio(g_SysClockSpeed);
+	InitRadio();
 #endif
 
 	//
 	// Initialize the GPS if turned on.
 #if GPS_ACTIVATED
-	InitGPS(g_SysClockSpeed);
+	InitGPS();
 #endif
 
 	//
 	// Initialize the ground motors if turned on.
 #if GNDMTRS_ACTIVATED
-	InitGndMotors(g_SysClockSpeed);
+	InitGndMotors();
 #endif
 
 	//
@@ -468,7 +464,7 @@ int main(void) {
 #if SECONDARY_ATTITUDE
 	InitSolarPanels();
 
-	InitSecondaryAccel(g_SysClockSpeed);
+	InitSecondaryAccel();
 #endif
 
 	//
@@ -482,20 +478,19 @@ int main(void) {
 #if PAYLOAD_DEPLOY
 	//
 	// Initialize the air motors.
-	ui32ServoSpeed = InitServoMtrs(g_SysClockSpeed);
+	ui32ServoSpeed = InitServoMtrs();
 
 	//
 	// Calculate zero position corresponding to a 2.5% duty cycle.
-	g_StartPosition = (uint32_t)(speed * 0.025);
+	g_ui32ServoStartPosition = (uint32_t)(	ui32ServoSpeed * 0.025);
 
 	//
 	// Calculate end position corresponding to a 12.5% duty cycle.
-	g_EndPosition = g_StartPosition * 5;
-	g_ui32AngleIncrement = (g_EndPosition - g_StartPosition) / 100;
+	g_ui32ServoEndPosition = g_ui32ServoStartPosition * 5;
 
 	//
-	// Initialize the throttle of the system.
-	g_ui32ServoAngle = g_StartPosition;
+	// Initialize the angle of the system to the starting position.
+	g_ui32ServoAngle = g_ui32ServoStartPosition;
 #endif
 
 	//
@@ -503,7 +498,7 @@ int main(void) {
 #if ALTIMETER_ACTIVATED
 	//
 	// Initialize the altimeter.
-	InitAltimeter(g_SysClockSpeed, g_BME280OffsetValues);
+	InitAltimeter(g_BME280OffsetValues);
 
 	//
 	// Set the offset values.
@@ -516,7 +511,7 @@ int main(void) {
 #if AIRMTRS_ACTIVATED
 	//
 	// Initialize the air motors.
-	InitAirMtrs(g_SysClockSpeed, ZEROTHROTTLE);
+	InitAirMtrs(ZEROTHROTTLE);
 
 	//
 	// Calculate a throttle increment.
@@ -526,7 +521,7 @@ int main(void) {
 	//
 	// Initialize the BMI160 IMU if enabled.
 #if IMU_ACTIVATED
-	InitIMU(g_SysClockSpeed, g_offsetData);
+	InitIMU(g_offsetData);
 
 	while (numCalcs < 50) {
 		if (g_IMUDataFlag) {
@@ -641,7 +636,7 @@ int main(void) {
 	// blink LED 4, signifying regular operation.
 	// The Systick cannot handle any value larger than 16MHz.
 	TurnOffLED(1);
-	SysTickPeriodSet(g_SysClockSpeed / 12);
+	SysTickPeriodSet(SYSCLOCKSPEED / 12);
 	SysTickEnable();
 
 #if (AIRMTRS_ACTIVATED)
@@ -693,7 +688,7 @@ int main(void) {
 		//
 		// Check if Ultrasonic is done.
 		if (g_UltraSonicFlag)
-			ProcessUltraSonic(g_SysClockSpeed);
+			ProcessUltraSonic(SYSCLOCKSPEED);
 
 		//
 		// Check if accel or gyro data is ready.
@@ -827,7 +822,7 @@ void RadioIntHandler(void) {
 					// Good radio connection. Reset the timer and set the status.
 					sStatus.bRadioConnected = true;
 					TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
-							g_SysClockSpeed / GS_RADIO_RATE);
+							SYSCLOCKSPEED / GS_RADIO_RATE);
 
 					//
 					// Process the radio commands.
@@ -1484,13 +1479,13 @@ void Menu(char charReceived) {
 		UARTprintf("A - Trigger solar panel ADC.\r\n");
 		UARTprintf("1 - Trigger ultra sonic sensor #1.\r\n");
 		UARTprintf("2 - Trigger ultra sonic sensor #2.\r\n");
-		UARTprintf("Y - Activate solenoid enable pins.\r\n");
 		UARTprintf("w - Increase air motor throttle.\r\n");
 		UARTprintf("s - Decrease air motor throttle.\r\n");
 		UARTprintf("x - Stop the motors.\r\n");
 		UARTprintf("i - Increase ground motor throttle.\r\n");
 		UARTprintf("k - Decrease ground motor throttle.\r\n");
 		UARTprintf("0 - Cut ground motor throttle.\r\n");
+		UARTprintf("D - Deploy payload.\r\n");
 		UARTprintf("Q - Quit this program.\r\n");
 
 		break;
@@ -1706,6 +1701,12 @@ void Menu(char charReceived) {
 				3, txBuffer);
 	break;
 	}
+#if PAYLOAD_DEPLOY
+	case 'd': // Deploy the payload.
+	{
+		g_ui32ServoAngle = g_ui32ServoEndPosition;
+	}
+#endif
 	}
 #endif
 	//
