@@ -41,7 +41,8 @@
 #include "sensors/i2c_driver.h"
 #include "motors/gnd_mtrs.h"
 
-#define APOPHIS false
+#include "master_defines.h"
+
 #define CLOCK_PIOSC 16000000
 
 //*****************************************************************************
@@ -150,9 +151,12 @@ void InitConsole(void) {
 //
 //*****************************************************************************
 void InitRadio(uint32_t SysClockSpeed) {
+
+#if DEBUG
 	//
 	// Print initializing to the Console.
 	UARTprintf("Initializing Radio...\n\r");
+#endif
 
 	//
 	// Enable GPIO port K which is used for UART4 pins.
@@ -215,9 +219,11 @@ void InitRadio(uint32_t SysClockSpeed) {
 	IntEnable(RADIO_TIMER_CHECK_INT);
 	TimerIntRegister(RADIO_TIMER_CHECK, TIMER_A, RadioTimeoutIntHandler);
 
+#if DEBUG
 	//
 	// Initialization complete. Print to console.
 	UARTprintf("Done!\n\r");
+#endif
 }
 
 //*****************************************************************************
@@ -227,9 +233,12 @@ void InitRadio(uint32_t SysClockSpeed) {
 //
 //*****************************************************************************
 void InitGPS(uint32_t SysClockSpeed) {
+
+#if DEBUG
 	//
 	// Print initializing to the Console.
 	UARTprintf("Initializing GPS...\n\r");
+#endif
 
 	//
 	// Enable GPIO port P which is used for UART6 pins.
@@ -259,9 +268,11 @@ void InitGPS(uint32_t SysClockSpeed) {
 	UARTIntEnable(GPS_UART, UART_INT_RX);
 	UARTIntRegister(GPS_UART, GPSIntHandler);
 
+#if DEBUG
 	//
 	// Initialization complete. Print to console.
 	UARTprintf("Done!\n\r");
+#endif
 }
 
 //*****************************************************************************
@@ -271,9 +282,12 @@ void InitGPS(uint32_t SysClockSpeed) {
 //
 //*****************************************************************************
 void InitGndMotors(uint32_t SysClockSpeed) {
+
+#if DEBUG
 	//
 	// Print initializing to the Console.
 	UARTprintf("Initializing Ground Motors...\n\r");
+#endif
 
 	//
 	// Enable GPIO port C and D which is used for UART2 and UART7 pins.
@@ -321,29 +335,24 @@ void InitGndMotors(uint32_t SysClockSpeed) {
 	InitRx24FMotor(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION);
 	InitRx24FMotor(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION);
 
-	//
-	// Enable the UART interrupt.
-	// TODO: Check interrupt initialization for ground motors.
-	IntEnable(GNDMTR1_INT);
-	UARTIntEnable(GNDMTR1_UART, UART_INT_RX | UART_INT_RT);
-	UARTIntRegister(GNDMTR1_UART, GndMtr1IntHandler);
-
-	IntEnable(GNDMTR2_INT);
-	UARTIntEnable(GNDMTR2_UART, UART_INT_RX | UART_INT_RT);
-	UARTIntRegister(GNDMTR2_UART, GndMtr2IntHandler);
-
+#if DEBUG
 	//
 	// Initialization complete. Print to console.
 	UARTprintf("Done!\n\r");
+#endif
+
 }
 
 /*
  * ADC Initialization Function for Solar Panels.
  */
 void InitSolarPanels(void) {
+
+#if DEBUG
 	//
 	// Print initializing to the Console.
 	UARTprintf("Initializing Solar Panels...\n\r");
+#endif
 
 	//
 	// The ADC0 peripheral must be enabled for use.
@@ -402,16 +411,22 @@ void InitSolarPanels(void) {
 
 	// TODO: Check to make sure ADC is configured correctly. Cuz either it's not
 	// or it's broken.
+
+#if DEBUG
 	//
 	// Initialization complete. Print to console.
 	UARTprintf("Done!\n\r");
+#endif
 }
 
 /*
  * Initializations for Ultrasonic Sensors
  */
 void InitUltraSonicSensor(void) {
+
+#if DEBUG
 	UARTprintf("Initializing Ultrasonic Sensors...\n\r");
+#endif
 
 	//
 	// Enable the peripheral used by timers 1, 2 and 3.
@@ -542,7 +557,9 @@ void InitUltraSonicSensor(void) {
 	TimerEnable(USONIC_TIMER1, TIMER_A);
 	TimerEnable(USONIC_TIMER1, TIMER_B);
 
+#if DEBUG
 	UARTprintf("Done!\n\r");
+#endif
 }
 
 /*
@@ -586,7 +603,10 @@ void InitSolenoidEnablePins(uint32_t SysClockSpeed) {
  */
 
 void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
+
+#if DEBUG
 	UARTprintf("Initializing IMU...\n\r");
+#endif
 
 	//
 	// Stop the Clock, Reset and Enable I2C Module
@@ -683,7 +703,9 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
 	// Turn off interrupts, since I2CWrite turns them on.
 	IntMasterDisable();
 
+#if DEBUG
 	UARTprintf("Done!\n\r");
+#endif
 }
 
 /*
@@ -696,7 +718,10 @@ void InitIMU(uint32_t SysClockSpeed, uint8_t *offsetCompensation) {
  * operational rate of 25Hz.
  */
 void InitAltimeter(uint32_t SysClockSpeed, int8_t *offsetValues) {
+
+#if DEBUG
 	UARTprintf("Initializing BME280...\n\r");
+#endif
 
 	//
 	// Since BME280 does not have interrupts,
@@ -729,17 +754,21 @@ void InitAltimeter(uint32_t SysClockSpeed, int8_t *offsetValues) {
 	// Enable the timer.
 	TimerEnable(BME280_TIMER, TIMER_A);
 
+#if DEBUG
 	UARTprintf("Done!\n\r");
+#endif
 }
 
 /*
  * Initialization for the PWM module 0 for the
  * air motors. PWM M0 pins 0-3 wll be used.
  */
-void InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle) {
+uint32_t InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle) {
 	uint32_t speed;
 
+#if DEBUG
 	UARTprintf("Initializing air motors...\n\r");
+#endif
 
 	SysCtlPeripheralDisable(GPIO_PORTK_BASE);
 	SysCtlPeripheralReset(GPIO_PORTK_BASE);
@@ -764,18 +793,6 @@ void InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle) {
 	GPIOPinTypePWM(PWM_GPIO_PORT1, PWM_MTR_1 | PWM_MTR_2 | PWM_MTR_3);
 	GPIOPinTypePWM(PWM_GPIO_PORT2, PWM_MTR_4);
 
-#if !APOPHIS
-	//
-	// Set up 2 extra motors.
-	SysCtlPeripheralEnable(GPIO_PORTK_BASE);
-
-	GPIOPinConfigure(GPIO_PG1_M0PWM5);
-	GPIOPinConfigure(GPIO_PK4_M0PWM6);
-
-	GPIOPinTypePWM(GPIO_PORTG_BASE, PWM_MTR_5);
-	GPIOPinTypePWM(GPIO_PORTK_BASE, PWM_MTR_6);
-#endif
-
 	PWMClockSet(PWM0_BASE, PWM_SYSCLK_DIV_64);
 
 	//
@@ -792,15 +809,10 @@ void InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle) {
 	PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, speed);
 	PWMGenPeriodSet(PWM0_BASE, PWM_GEN_2, speed);
 
+#if DEBUG
 	uint32_t stuff = PWMGenPeriodGet(PWM0_BASE, PWM_GEN_0);
 
 	UARTprintf("PWM generator period: %d\r\n", stuff);
-
-#if !APOPHIS
-	//
-	// Set up the generator for the 6th motor.
-	PWMGenConfigure(PWM0_BASE, PWM_GEN_3, PWM_GEN_MODE_DOWN);
-	PWMGenPeriodSet(PWM0_BASE, PWM_GEN_3, speed);
 #endif
 
 	//
@@ -810,30 +822,26 @@ void InitAirMtrs(uint32_t sysClockSpeed, uint32_t zeroThrottle) {
 	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, zeroThrottle);
 	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, zeroThrottle);
 
-#if !APOPHIS
-	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, zeroThrottle);
-	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, zeroThrottle);
-
-	PWMOutputState(PWM0_BASE, PWM_OUT_1_BIT | PWM_OUT_2_BIT | PWM_OUT_3_BIT |
-	PWM_OUT_4_BIT | PWM_OUT_5_BIT | PWM_OUT_6_BIT, true);
-
-	UARTprintf("Motors initialized for test rig.\r\nDone!\n\r");
-#else
-
 	//
 	// Set the output PWM modules.
 	PWMOutputState(PWM0_BASE, PWM_OUT_1_BIT | PWM_OUT_2_BIT | PWM_OUT_3_BIT |
 			PWM_OUT_4_BIT, true);
 
+#if DEBUG
 	UARTprintf("Motors initialized for APOPHIS.\r\nDone!\n\r");
 #endif
+
+	return speed;
 }
 
 /*
  * Initialization for the secondary accelerometer.
  */
 void InitSecondaryAccel(uint32_t sysClockSpeed) {
+
+#if DEBUG
 	UARTprintf("Initializing MMA8452Q...\n\r");
+#endif
 
 	//
 	// Stop the Clock, Reset and Enable I2C Module
@@ -898,5 +906,71 @@ void InitSecondaryAccel(uint32_t sysClockSpeed) {
 	// Turn off interrupts, since I2CWrite turns them on.
 	IntMasterDisable();
 
+#if DEBUG
 	UARTprintf("Done!\n\r");
+#endif
+}
+
+/*
+ * Initialization for the PWM module 0 for the
+ * servo motors. PWM M0 pins 6-7 will be used on pins PK4 and PK5.
+ * Returns: the speed of the PWM pulse in clock cycles.
+ */
+uint32_t InitServoMtrs(uint32_t sysClockSpeed) {
+	float speed = 0.0f;
+
+#if DEBUG
+	UARTprintf("Initializing servo motors...\n\r");
+#endif
+
+	SysCtlPeripheralEnable(SERVO_GPIO_PERIPH);
+
+	//
+	// Wait for the Peripheral to be ready for programming
+	while (!SysCtlPeripheralReady(SERVO_GPIO_PERIPH))
+		;
+
+	//
+	// Turn on the peripherals for the PWM.
+	SysCtlPeripheralEnable(SERVO_PERIPHERAL);
+
+	//
+	// Configure the GPIO pins.
+	GPIOPinConfigure(GPIO_PK4_M0PWM6);
+	GPIOPinConfigure(GPIO_PK5_M0PWM7);
+
+	GPIOPinTypePWM(SERVO_GPIO_PORT1, SERVO_GPIO_1 | SERVO_GPIO_2);
+
+	PWMClockSet(PWM0_BASE, PWM_SYSCLK_DIV_64);
+
+	//
+	// Frequency of PWM.
+	speed = (sysClockSpeed / 64 / SERVO_FREQUENCY);
+
+	//
+	// Configure the PWM generator for modules 6 and 7.
+    PWMGenConfigure(PWM0_BASE, PWM_GEN_3, PWM_GEN_MODE_DOWN);
+
+    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_3, speed);
+
+#if DEBUG
+	uint32_t stuff = PWMGenPeriodGet(PWM0_BASE, PWM_GEN_3);
+
+	UARTprintf("PWM generator period: %d\r\n", stuff);
+#endif
+
+	//
+	// Initialize pulse to 10%
+	PWMPulseWidthSet(PWM0_BASE, SERVO_1, (uint32_t)(speed * 0.025));
+	PWMPulseWidthSet(PWM0_BASE, SERVO_2, (uint32_t)(speed * 0.025));
+
+	//
+	// Set the output PWM modules.
+	PWMOutputState(PWM0_BASE, PWM_OUT_6_BIT | PWM_OUT_7_BIT, true);
+
+#if DEBUG
+	UARTprintf("Done!\n\r");
+#endif
+
+	return speed;
 }

@@ -19,7 +19,7 @@
 #include "bmi160.h"
 #include "i2c_driver.h"
 
-#define DEBUG true
+#include "../master_defines.h"
 
 //*****************************************************************************
 //
@@ -175,6 +175,8 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
     txBuffer[1] = BMI160_MAG_ADDRESS << 1;
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
 
+    SysCtlDelay(sysClockSpeed / 500);
+
     //
     // Set up direct writes.
     txBuffer[0] = BMI160_MAG_IF + 0x01;
@@ -216,6 +218,8 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
     txBuffer[0] = BMI160_MAG_IF + 0x01;
     txBuffer[1] = BMI160_MAG_BURST_READ;
     I2CBurstWrite(I2C_base, BMI160_ADDRESS, 2, txBuffer);
+
+    SysCtlDelay(sysClockSpeed / 500);
 
     txBuffer[0] = BMI160_MAG_IF + 0x02;
     txBuffer[1] = BMM150_DATA_REG;

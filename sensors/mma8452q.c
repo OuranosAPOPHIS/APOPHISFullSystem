@@ -19,6 +19,8 @@
 #include "mma8452q.h"
 #include "i2c_driver.h"
 
+#include "../master_defines.h"
+
 //*****************************************************************************
 //
 // This function will initialize the MMA8452Q Sensor.
@@ -37,12 +39,11 @@
 //
 //*****************************************************************************
 
-#define DEBUG true
-
 void InitMMA8452Q(uint32_t I2C_base, uint8_t AccelRange, uint8_t AccelRate)
 {
 	 uint8_t txBuffer[2];
-	#if DEBUG
+
+#if DEBUG
 	uint8_t state[5] = {0, 0, 0, 0, 0};
 #endif
 

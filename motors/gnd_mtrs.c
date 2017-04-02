@@ -18,7 +18,7 @@
 
 #include "gnd_mtrs.h"
 
-#define DEBUG true
+#include "../master_defines.h"
 
 /*
  * Initialization for Rx24 motor.

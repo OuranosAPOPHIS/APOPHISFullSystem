@@ -349,5 +349,22 @@
 
 #define MMA8452Q_I2C I2C2_BASE
 
+/*
+ * Servo Motors PWM Module Peripheral Defines
+ *
+ * Pins:
+ * PG1 and PK4
+ */
+#define SERVO_PERIPHERAL SYSCTL_PERIPH_PWM0
+#define SERVO_GPIO_PERIPH SYSCTL_PERIPH_GPIOK
+#define SERVO_GPIO_PORT1 GPIO_PORTK_BASE
+
+#define SERVO_GPIO_1 GPIO_PIN_4
+#define SERVO_GPIO_2 GPIO_PIN_5
+
+#define SERVO_1 PWM_OUT_6
+#define SERVO_2 PWM_OUT_7
+
+#define SERVO_FREQUENCY 50
 
 #endif /* APOPHIS_PIN_MAP_H_ */

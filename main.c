@@ -2,7 +2,7 @@
  * Project: Aerial Platform for Overland Haul and Import System (APOPHIS)
  *
  *  Created On: Jan 20, 2017
- *  Last Updated: March 7, 2017
+ *  Last Updated: April 1, 2017
  *      Author(s): Brandon Klefman
  *
  *      Purpose: Flight computer for the APOPHIS platform.
@@ -40,11 +40,13 @@
 
 #include "initializations.h"
 #include "APOPHIS_pin_map.h"
+#include "master_defines.h"
 #include "packet_format.h"
 #include "sensors/bmi160.h"
 #include "sensors/i2c_driver.h"
 #include "sensors/bme280.h"
 #include "motors/gnd_mtrs.h"
+
 
 //*****************************************************************************
 //
@@ -52,16 +54,14 @@
 //
 //*****************************************************************************
 
-#define DEBUG false
-#define APOPHIS false
+//#define DEBUG true
 
-#define CONSOLE_ACTIVATED true
 #define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
-#define GNDMTRS_ACTIVATED true
+#define GNDMTRS_ACTIVATED false
 #define SECONDARY_ATTITUDE false
 #define ULTRASONIC_ACTIVATED false
-#define SOLENOIDS_ACTIVATED false
+#define PAYLOAD_DEPLOY false
 #define IMU_ACTIVATED true
 #define ALTIMETER_ACTIVATED false
 #define AIRMTRS_ACTIVATED true
@@ -70,10 +70,15 @@
 #define DT 0.01
 
 //
-// The number of LSB per degree/s for 125 degrees/s.
-#define GYROLSB 262.4
+// LSB conversions for +/-2g accel, 125 deg/s gyro and mag settings.
+#define GYROLSB 262.4f
 #define ACCELLSB 16384
-#define MAGLSB 16
+#define MAGLSB 16.0f
+
+//
+// Throttle limits for the aerial motors.
+#define ZEROTHROTTLE 2239
+#define MAXTHROTTLE 4000
 
 //*****************************************************************************
 //
@@ -84,8 +89,6 @@ void SysTickIntHandler(void);
 void ConsoleIntHandler(void);
 void RadioIntHandler(void);
 void GPSIntHandler(void);
-void GndMtr1IntHandler(void);
-void GndMtr2IntHandler(void);
 void Timer2AInterrupt(void);
 void Timer2BInterrupt(void);
 void Timer3AInterrupt(void);
@@ -120,8 +123,11 @@ void AutoDriveUpdate(void);
 //
 //*****************************************************************************
 
-bool g_LEDON = false;
-
+//*****************************************************************************
+//
+// System State Structures.
+//
+//*****************************************************************************
 //
 // State of the system structure definition and variable.
 typedef struct {
@@ -175,17 +181,7 @@ typedef struct {
 	float fAirMtr2Throttle;
 	float fAirMtr3Throttle;
 	float fAirMtr4Throttle;
-#if !APOPHIS
-	float fAirMtr5Throttle;
-	float fAirMtr6Throttle;
-#endif
 } SystemThrottle;
-
-//
-// Throttle values for the air motors.
-uint32_t g_ui32ZeroThrottle = 0;
-uint32_t g_ui32MaxThrottle = 0;
-uint32_t g_ui32ThrottleIncrement = 0;
 
 //
 // System throttle structure.
@@ -199,10 +195,58 @@ SystemStatus sStatus;
 SensorStatus sSensStatus;
 
 //
+// Throttle values for the air motors.
+uint32_t g_ui32ThrottleIncrement = 0;
+
+//*****************************************************************************
+//
+// IMU global variables.
+//
+//*****************************************************************************
+//
 // Global Instance structure to manage the DCM state.
 tCompDCM g_sCompDCMInst;
 bool g_bDCMStarted;
 
+//
+// Flag to indicate when to process IMU data.
+bool g_IMUDataFlag = false;
+
+//
+// Offset compensation data for the accel and gyro.
+uint8_t g_offsetData[7] = { 0 };
+
+//
+// Calculated bias for mag from MATLAB in uTeslas.
+int16_t g_MagBias[3] = { 0 }; //{ 23.2604390452978, 4.40368720486817, 41.9678519105233 };
+
+//
+// Global storage for the gyro data and gyro bias.
+float g_fGyroData[3];
+int16_t g_GyroStabBias[3] = { 0 };
+
+//
+// Used as global storage for the raw mag data.
+float g_fMagData[3];
+
+//
+// Used to indicate if the IMU is working, by blinking LED 1.
+bool g_LED1On = false;
+
+//
+// Used to indicate when to print the accel and gyro values to the PC.
+// Set to once per second. Triggered every second by the SysTickIntHandler()
+bool g_PrintIMUData = false;
+
+//
+// Variable to determine whether to print the raw accel and gyro data to the terminal.
+bool g_PrintRawBMIData = false;
+
+//*****************************************************************************
+//
+// Radio packet global variables.
+//
+//*****************************************************************************
 //
 // Radio packet to be sent to the ground station.
 uTxPack g_Pack;
@@ -210,6 +254,19 @@ uTxPack g_Pack;
 //
 // Radio packet to be received from ground station.
 uRxPack g_sRxPack;
+
+//
+// Variable to indicate when Radio data is available.
+bool g_RadioFlag = false;
+
+//*****************************************************************************
+//
+// Misc global variables.
+//
+//*****************************************************************************
+//
+// LED tracker.
+bool g_LEDON = false;
 
 //
 // Counter for Systick printing at 2 Hz instead of 12 Hz.
@@ -241,24 +298,14 @@ bool g_Quit = false;
 bool g_ADCFlag = false;
 
 //
-// Variable to indicate when Radio data is available.
-bool g_RadioFlag = false;
-
-//
-// Variable used to track actual update rate of radio.
-uint32_t g_RadioCount = 0;
-
-//
-// Flag to indicate when to print radio count.
-bool g_PrintRadioFlag = false;
-
-//
 // Flag to indicate when to print for the trajectory information.
 bool g_PrintFlag = false;
 
-/*
- * GPS globals.
- */
+//*****************************************************************************
+//
+// GPS global variables.
+//
+//*****************************************************************************
 //
 // Variable to indicate when GPS data is available.
 bool g_GPSFlag = false;
@@ -273,9 +320,11 @@ bool g_GPSConnected = false;
 // Variable to determine whether to print the raw GPS data to the terminal.
 bool g_PrintRawGPS = false;
 
-/*
- * Ultrasonic sensor globals.
- */
+//*****************************************************************************
+//
+// Ultrasonic Sensor global variables.
+//
+//*****************************************************************************
 //
 // Variable to indicate first or last pass through timer interrupt.
 bool g_TimerFirstPass = true;
@@ -294,78 +343,34 @@ bool g_UltraSonicFlag = false;
 // 0, then no sensors are being activated. This value will range from 0 - 6.
 uint8_t g_UltraSonicSensor = 0;
 
-/*
- * Acceleromter and Gyro global values.
- */
+//*****************************************************************************
 //
-// Temporary storage for the accel and gyro data received from the BMI160.
-// Each x,y,z value takes up two bytes.
-bool g_IMUDataFlag = false;
-
+// Environmental Sensor global variables.
 //
-// Offset compensation data for the accel and gyro.
-uint8_t g_offsetData[7] = { 0 };
-int16_t g_GyroBias[3] = { 0 };
-
-//
-// Calculated bias for mag from MATLAB in uTeslas.
-int16_t g_MagBias[3] = { 0 }; //{ 23.2604390452978, 4.40368720486817, 41.9678519105233 };
-
-//
-// Used as global storage for the gyro data.
-float g_fGyroData[3];
-
-//
-// Used as global storage for the raw mag data.
-float g_fMagData[3];
-//
-// Used to indicate if the IMU is working, by blinking LED 1.
-bool g_LED1On = false;
-
-//
-// Used to indicate when to print the accel and gyro values to the PC.
-// Set to once per second. Triggered every second by the SysTickIntHandler()
-bool g_loopCount = false;
-
-//
-// Floating point conversion factors for accelerometer. Found by dividing
-// 9.81 m/s^2 by the LSB/g / 2. e.g. 9.81 / 8192 = 0.00119750976
-float g_Accel2GFactor = 0.00119750976;
-
-/*
- * Globals for BME280 environmental sensor.
- */
+//*****************************************************************************
 //
 // BME280 flag for triggered data analysis in main().
 bool g_BME280Ready = false;
-
-//
-// Variable to determine whether to print the raw accel and gyro data to the terminal.
-bool g_PrintRawBMIData = false;
 
 //
 // Storage for the BME280 raw data and its pointer.
 int8_t g_BME280RawData[7];
 int8_t *g_ptrBME280RawData = &g_BME280RawData[0];
 
+//
+// Offset values from BME280 registers.
 int8_t g_BME280OffsetValues[12];
 uint8_t g_BME280OffsetUnsigned[2];
 
 //
 // Floating format for pressure and temperature data.
-float g_Pressure;
-float g_Temp;
+float g_fPressure;
+float g_fTemp;
 
 //
 // global temperature fine value for BME280;
 int32_t g_t_fine;
 int32_t *g_p_t_fine = &g_t_fine;
-
-/*
- * Flags for the analysis in main from gnd motors.
- */
-bool g_bGndMtr1Flag = false;
-bool g_bGndMtr2Flag = false;
 
 //*****************************************************************************
 //
@@ -373,9 +378,14 @@ bool g_bGndMtr2Flag = false;
 //
 //*****************************************************************************
 int main(void) {
-	uint32_t speed = 0;
+
+#if PAYLOAD_DEPLOY
+	uint32_t ui32ServoSpeed = 0;
+#endif
 
 #if IMU_ACTIVATED
+	//
+	// Values for the gyro stability bias calculation.
     int numCalcs = 0;
     int index, j;
     int32_t ui32Sum[3] = { 0 };
@@ -395,6 +405,8 @@ int main(void) {
 	g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN |
 	SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480, 120000000);
 #else
+	//
+	// Set the clocking to run at 16 MHz.
 	g_SysClockSpeed = SysCtlClockFreqSet(SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
 			SYSCTL_XTAL_16MHZ, 16000000);
 #endif
@@ -420,9 +432,14 @@ int main(void) {
 	ButtonsInit();
 
 	//
-	// Initialize the Console.
+	// Initialize the Console if debug mode is on.
+#if DEBUG
 	InitConsole();
+#endif
+
+#if DEBUG
 	UARTprintf("Clock speed: %d\r\n", g_SysClockSpeed);
+#endif
 
 	//
 	// Initialize the radio if turned on.
@@ -457,9 +474,24 @@ int main(void) {
 #endif
 
 	//
-	// Initialize the solenoid enable pins if turned on.
-#if SOLENOIDS_ACTIVATED
-	InitSolenoidEnablePins(g_SysClockSpeed);
+	// Initialize the payload deployment pins if turned on.
+#if PAYLOAD_DEPLOY
+	//
+	// Initialize the air motors.
+	ui32ServoSpeed = InitServoMtrs(g_SysClockSpeed);
+
+	//
+	// Calculate zero position corresponding to a 2.5% duty cycle.
+	g_StartPosition = (uint32_t)(speed * 0.025);
+
+	//
+	// Calculate end position corresponding to a 12.5% duty cycle.
+	g_EndPosition = g_StartPosition * 5;
+	g_ui32AngleIncrement = (g_EndPosition - g_StartPosition) / 100;
+
+	//
+	// Initialize the throttle of the system.
+	g_ui32ServoAngle = g_StartPosition;
 #endif
 
 	//
@@ -476,17 +508,15 @@ int main(void) {
 #endif
 
 	//
-	// Calculate zerothrottle corresponding to a 1 ms PWM pulse.
-	speed = (g_SysClockSpeed / PWM_FREQUENCY / 64);
-	g_ui32ZeroThrottle = (speed * 1 * PWM_FREQUENCY) / 1000;
-	g_ui32MaxThrottle = (speed * 2 * PWM_FREQUENCY) / 1000;
-	g_ui32ThrottleIncrement = g_ui32ZeroThrottle / 200;
-	g_ui32ZeroThrottle += g_ui32ThrottleIncrement * 37;
-
-	//
 	// Initialize the air motors if activated.
 #if AIRMTRS_ACTIVATED
-	InitAirMtrs(g_SysClockSpeed, g_ui32ZeroThrottle);
+	//
+	// Initialize the air motors.
+	InitAirMtrs(g_SysClockSpeed, ZEROTHROTTLE);
+
+	//
+	// Calculate a throttle increment.
+	g_ui32ThrottleIncrement = (MAXTHROTTLE - ZEROTHROTTLE) / 200;
 #endif
 
 	//
@@ -507,7 +537,7 @@ int main(void) {
 			// Check what status returned.
 			if ((status & 0x40) == (BMI160_GYR_RDY)) {
 				//
-				// Then get the data for both the accel and gyro.
+				// Get the data for the gyro.
 				I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 6, IMUData);
 
 				//
@@ -525,13 +555,13 @@ int main(void) {
 	}
 
 	//
-	// Calculate the bias.
+	// Calculate the stability bias.
 	for (index = 0; index < numCalcs; index++)
 		for (j = 0; j < 3; j++)
 			ui32Sum[j] += bias[j][index];
 
 	for (index = 0; index < 3; index++)
-		g_GyroBias[index] = ui32Sum[index] / numCalcs;
+		g_GyroStabBias[index] = ui32Sum[index] / numCalcs;
 #endif
 
 	//
@@ -570,14 +600,11 @@ int main(void) {
 
 	//
 	// Initialize the throttle of the system.
-	sThrottle.fAirMtr1Throttle = g_ui32ZeroThrottle;
-	sThrottle.fAirMtr2Throttle = g_ui32ZeroThrottle;
-	sThrottle.fAirMtr3Throttle = g_ui32ZeroThrottle;
-	sThrottle.fAirMtr4Throttle = g_ui32ZeroThrottle;
-#if !APOPHIS
-	sThrottle.fAirMtr5Throttle = g_ui32ZeroThrottle;
-	sThrottle.fAirMtr6Throttle = g_ui32ZeroThrottle;
-#endif
+	sThrottle.fAirMtr1Throttle = ZEROTHROTTLE;
+	sThrottle.fAirMtr2Throttle = ZEROTHROTTLE;
+	sThrottle.fAirMtr3Throttle = ZEROTHROTTLE;
+	sThrottle.fAirMtr4Throttle = ZEROTHROTTLE;
+
 	sThrottle.ui16GndMtrRWThrottle = 0x0000;
 	sThrottle.ui16GndMtrLWThrottle = 0x0000;
 
@@ -587,9 +614,11 @@ int main(void) {
 	g_Pack.pack.Magic[1] = 0xFF;
 	g_Pack.pack.Magic[2] = 0xFF;
 
+#if DEBUG
 	//
 	// Before starting program, wait for a button press on either switch.
 	UARTprintf("Initialization Complete!\r\nPress left button to start.\r\n");
+#endif
 
 	TurnOnLED(5);
 
@@ -617,11 +646,6 @@ int main(void) {
 	PWMGenEnable(PWM0_BASE, PWM_GEN_1);
 	PWMGenEnable(PWM0_BASE, PWM_GEN_2);
 
-#if !APOPHIS
-	//
-	// Activate the extra motor for the test rig.
-	PWMGenEnable(PWM0_BASE, PWM_GEN_3);
-#endif
 #endif
 
 #if (RADIO_ACTIVATED)
@@ -633,7 +657,7 @@ int main(void) {
 
 	//
 	// Enable trajectory timer.
-	TimerEnable(UPDATE_TIMER, TIMER_B);
+	//TimerEnable(UPDATE_TIMER, TIMER_B);
 
 	//
 	// Print menu.
@@ -677,9 +701,12 @@ int main(void) {
 			ProcessBME280();
 
 	}
+
+#if DEBUG
 	//
 	// Program ending. Do any clean up that's needed.
 	UARTprintf("Goodbye!\r\n");
+#endif
 
 	TurnOffLED(5);
 
@@ -715,15 +742,11 @@ void SysTickIntHandler(void) {
 
 		//
 		// Trigger printing accel and gyro data to PC terminal.
-		g_loopCount = true;
+		g_PrintIMUData = true;
 
 		//
 		// Trigger printing of the trajectory information.
 		g_PrintFlag = true;
-
-		//
-		// Trigger printing the update rate of the radio.
-		g_PrintRadioFlag = true;
 
 		//
 		// Reset SysTick Count.
@@ -844,40 +867,6 @@ void GPSIntHandler(void) {
 	//
 	// Signal to main() that GPS data is ready to be retreived.
 	g_GPSFlag = true;
-}
-
-//*****************************************************************************
-//
-// Interrupt handler for motor 1.
-//
-//*****************************************************************************
-void GndMtr1IntHandler(void) {
-	//
-	// Clear the interrupt.
-	uint32_t ui32Status = UARTIntStatus(GNDMTR1_UART, true);
-	UARTIntClear(GNDMTR1_UART, ui32Status);
-
-	//
-	// Trigger evaluation in main().
-	g_bGndMtr1Flag = true;
-}
-
-//*****************************************************************************
-//
-// Interrupt handler for motor 2.
-//
-//*****************************************************************************
-void GndMtr2IntHandler(void) {
-	//
-	// Clear the interrupt.
-	uint32_t ui32Status = UARTIntStatus(GNDMTR2_UART, true);
-	UARTIntClear(GNDMTR2_UART, ui32Status);
-
-	//
-	// Trigger evaluation in main().
-	g_bGndMtr2Flag = true;
-
-	UARTCharGet(GNDMTR2_UART);
 }
 
 //*****************************************************************************
@@ -1457,6 +1446,7 @@ void WaitForButtonPress(uint8_t desiredButtonState) {
 //
 //*****************************************************************************
 void Menu(char charReceived) {
+#if DEBUG
 	//
 	// Check the character received.
 	switch (charReceived) {
@@ -1490,11 +1480,14 @@ void Menu(char charReceived) {
 		UARTprintf("1 - Trigger ultra sonic sensor #1.\r\n");
 		UARTprintf("2 - Trigger ultra sonic sensor #2.\r\n");
 		UARTprintf("Y - Activate solenoid enable pins.\r\n");
-		UARTprintf("X - Stop the motors.\r\n");
-		UARTprintf("Q - Quit this program.\r\n");
-		UARTprintf("I - Increase ground motor throttle.\r\n");
-		UARTprintf("K - Decrease ground motor throttle.\r\n");
+		UARTprintf("w - Increase air motor throttle.\r\n");
+		UARTprintf("s - Decrease air motor throttle.\r\n");
+		UARTprintf("x - Stop the motors.\r\n");
+		UARTprintf("i - Increase ground motor throttle.\r\n");
+		UARTprintf("k - Decrease ground motor throttle.\r\n");
 		UARTprintf("0 - Cut ground motor throttle.\r\n");
+		UARTprintf("Q - Quit this program.\r\n");
+
 		break;
 	}
 	case 'A': // Trigger solar panel ADC.
@@ -1554,8 +1547,7 @@ void Menu(char charReceived) {
 
 		break;
 	}
-#if DEBUG
-	case 'W': // Increase throttle of air motors.
+	case 'w': // Increase throttle of air motors.
 	{
 		sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.fAirMtr1Throttle);
@@ -1563,47 +1555,34 @@ void Menu(char charReceived) {
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.fAirMtr1Throttle);
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.fAirMtr1Throttle);
 
-#if !APOPHIS
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, sThrottle.fAirMtr1Throttle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, sThrottle.fAirMtr1Throttle);
-#endif
-
 		UARTprintf("Throttle Increase: %d\r\n", sThrottle.fAirMtr1Throttle);
 		break;
 	}
-	case 'S': // Decrease throttle of air motors.
+	case 's': // Decrease throttle of air motors.
 	{
 		sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
 
-		if (sThrottle.fAirMtr1Throttle < g_ui32ZeroThrottle)
+		if (sThrottle.fAirMtr1Throttle < ZEROTHROTTLE)
 			sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.fAirMtr1Throttle);
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.fAirMtr1Throttle);
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.fAirMtr1Throttle);
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.fAirMtr1Throttle);
 
-#if !APOPHIS
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, sThrottle.fAirMtr1Throttle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, sThrottle.fAirMtr1Throttle);
-#endif
 		UARTprintf("Throttle Decrease: %d\r\n", sThrottle.fAirMtr1Throttle);
 		break;
 	}
-	case 'X': // kill the throttle.
+	case 'x': // kill the throttle.
 	{
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, g_ui32ZeroThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, g_ui32ZeroThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, g_ui32ZeroThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, g_ui32ZeroThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
 
-#if !APOPHIS
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5, g_ui32ZeroThrottle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6, g_ui32ZeroThrottle);
-#endif
-		UARTprintf("Throttle Decrease: %d\r\n", g_ui32ZeroThrottle);
+		UARTprintf("Throttle Decrease: %d\r\n", ZEROTHROTTLE);
 		break;
 	}
-	case 'I': // Increase ground motor throttle.
+	case 'i': // Increase ground motor throttle.
 	{
 		uint8_t txBuffer[4];
 
@@ -1636,7 +1615,7 @@ void Menu(char charReceived) {
 
 		break;
 	}
-	case 'K': // Decrease ground motor throttle.
+	case 'k': // Decrease ground motor throttle.
 	{
 		uint8_t txBuffer[4];
 
@@ -1701,7 +1680,7 @@ void Menu(char charReceived) {
 		UARTprintf("Zero throttle.\r\n");
 		break;
 	}
-	case 'L':
+	case 'l': // Activate GND motor LED.
 	{
 		uint8_t txBuffer[3];
 
@@ -1722,15 +1701,8 @@ void Menu(char charReceived) {
 				3, txBuffer);
 	break;
 	}
-#endif
-#if SOLENOIDS_ACTIVATED
-	case 'Y': // Activate the solenoids
-	{
-		ActivateSolenoids();
-		break;
 	}
 #endif
-	}
 	//
 	// Reset the flag.
 	g_ConsoleFlag = false;
@@ -1738,7 +1710,7 @@ void Menu(char charReceived) {
 
 //*****************************************************************************
 //
-// This function will forward all data from the GPS to the Console.
+// This function will parse the GPS data.
 //
 //*****************************************************************************
 void ProcessGPS(void) {
@@ -1932,7 +1904,7 @@ void ProcessGPS(void) {
 
 //*****************************************************************************
 //
-// This function will forward all radio data to the console.
+// This function will process the packet received from the ground station.
 //
 //*****************************************************************************
 void ProcessRadio(void) {
@@ -2030,6 +2002,7 @@ void ProcessADC(void) {
 	// Get the data.
 	ADCSequenceDataGet(SP_ADC, 0, ADCData);
 
+#if DEBUG
 	//
 	// Print out the data to the console.
 	UARTprintf("SP1 = %d\r\n", ADCData[0]);
@@ -2037,6 +2010,7 @@ void ProcessADC(void) {
 	UARTprintf("SP3 = %d\r\n", ADCData[2]);
 	UARTprintf("SP4 = %d\r\n", ADCData[3]);
 	UARTprintf("SP5 = %d\r\n", ADCData[4]);
+#endif
 
 	//
 	// Reset the flag.
@@ -2070,7 +2044,9 @@ int ProcessUltraSonic(uint32_t SysClockSpeed) {
 	// Reset the flag.
 	g_UltraSonicFlag = false;
 
+#if DEBUG
 	UARTprintf("deltaT = %d\r\n", deltaT);
+#endif
 
 	return distance;
 }
@@ -2094,7 +2070,9 @@ void ActivateSolenoids(void) {
 	// Enable timer 4, so that the pins will be turned off shortly.
 	TimerEnable(SOLENOID_TIMER, TIMER_A);
 
+#if DEBUG
 	UARTprintf("Deploying payload...\r\n");
+#endif
 }
 
 //*****************************************************************************
@@ -2113,7 +2091,9 @@ void DeactivateSolenoids(void) {
 	// Turn off USER LED 2.
 	TurnOffLED(2);
 
+#if DEBUG
 	UARTprintf("Payload Deployed!\r\n");
+#endif
 
 	//
 	// Update system status.
@@ -2140,18 +2120,6 @@ void SendPacket(void) {
 	//
 	// Clear the interrupt.
 	TimerIntClear(RADIO_TIMER, ui32Status);
-
-#if false
-    g_RadioCount++;
-
-	if (g_PrintRadioFlag)
-	{
-	    UARTprintf("Sending at %d times per second.\r\n", g_RadioCount);
-	    g_RadioCount = 0;
-
-	    g_PrintRadioFlag = false;
-	}
-#endif
 
 	if (sStatus.bRadioConnected) {
 		g_Pack.pack.accelX = sSensStatus.fCurrentAccelX;
@@ -2268,11 +2236,11 @@ void ProcessIMUData(void) {
 		//
 		// Set the gyro data to the global variables.
 		i16GyroData[0] = (((int16_t) IMUData[1] << 8) + (int8_t) IMUData[0])
-				- g_GyroBias[0];
+				- g_GyroStabBias[0];
 		i16GyroData[1] = (((int16_t) IMUData[3] << 8) + (int8_t) IMUData[2])
-				- g_GyroBias[1];
+				- g_GyroStabBias[1];
 		i16GyroData[2] = (((int16_t) IMUData[5] << 8) + (int8_t) IMUData[4])
-				- g_GyroBias[2];
+				- g_GyroStabBias[2];
 
 		//
 		// Convert data to float.
@@ -2301,7 +2269,7 @@ void ProcessIMUData(void) {
 #if DEBUG
 	//
 	// Print the raw data if turned on.
-	if (g_PrintRawBMIData && g_loopCount) {
+	if (g_PrintRawBMIData && g_PrintIMUData) {
 		UARTprintf("Accelx = %d\r\nAccely = %d\r\n", i16AccelData[0],
 				i16AccelData[1]);
 		UARTprintf("Accelz = %d\r\n", i16AccelData[2]);
@@ -2314,7 +2282,7 @@ void ProcessIMUData(void) {
 
 		//
 		// Reset loop count.
-		g_loopCount = false;
+		g_PrintIMUData = false;
 	}
 #endif
 
@@ -2353,7 +2321,7 @@ void ProcessBME280(void) {
 
 	//
 	// Calculate temp in degrees C, float format.
-	g_Temp = tempInt / 100.0f;
+	g_fTemp = tempInt / 100.0f;
 
 	//
 	// Correct the pressure data.
@@ -2362,7 +2330,7 @@ void ProcessBME280(void) {
 
 	//
 	// Calculate pressure in float form (Pascals).
-	g_Pressure = presInt / 256.0f;
+	g_fPressure = presInt / 256.0f;
 }
 
 //*****************************************************************************
@@ -2598,13 +2566,13 @@ void ManualFlyUpdate(void)
 		ui32Throttle = 0;
 
 	sThrottle.fAirMtr1Throttle = (ui32Throttle
-			* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE1;
+			* g_ui32ThrottleIncrement) + ZEROTHROTTLE;//HOVERTHROTTLE1;
 	sThrottle.fAirMtr2Throttle = (ui32Throttle
-			* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE2;
+			* g_ui32ThrottleIncrement) + ZEROTHROTTLE;//HOVERTHROTTLE2;
 	sThrottle.fAirMtr3Throttle = (ui32Throttle
-			* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE3;
+			* g_ui32ThrottleIncrement) + ZEROTHROTTLE;//HOVERTHROTTLE3;
 	sThrottle.fAirMtr4Throttle = (ui32Throttle
-			* g_ui32ThrottleIncrement) + g_ui32ZeroThrottle;//HOVERTHROTTLE4;
+			* g_ui32ThrottleIncrement) + ZEROTHROTTLE;//HOVERTHROTTLE4;
 
 		//
 		// Get the yaw value.
@@ -2817,12 +2785,6 @@ void ManualFlyUpdate(void)
 			sThrottle.fAirMtr3Throttle);
 	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4,
 			sThrottle.fAirMtr4Throttle);
-#if !APOPHIS
-	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_5,
-			sThrottle.fAirMtr5Throttle);
-	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_6,
-			sThrottle.fAirMtr6Throttle);
-#endif
 }
 
 //*****************************************************************************

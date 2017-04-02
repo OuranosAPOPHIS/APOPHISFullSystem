@@ -17,6 +17,9 @@
 
 #include "utils/uartstdio.h"
 
+#include "../master_defines.h"
+
+
 //*****************************************************************************
 //
 // This function does a burst write to the I2C device specified.
@@ -247,6 +250,7 @@ uint32_t I2CWait(uint32_t I2C_base)
         // No error.
         return status;
     }
+#if DEBUG
     else if (status == I2C_MASTER_ERR_ADDR_ACK)
     {
         //
@@ -265,6 +269,7 @@ uint32_t I2CWait(uint32_t I2C_base)
         // ARB lost error.
         UARTprintf("ARB LOST ERROR\n\r");
     }
+#endif
 
     return status;
 }

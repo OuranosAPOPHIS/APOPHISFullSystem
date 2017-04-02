@@ -15,6 +15,8 @@
 #include "i2c_driver.h"
 #include "bme280.h"
 
+#include "../master_defines.h"
+
 /*
  * Initialization function for the BME280.
  *
@@ -47,10 +49,12 @@ void InitBME280(uint32_t I2C_base, int8_t *offsetValues)
     txBuffer[1] = BME280_STNDBY_0_5 | BME280_FLTR_16;
     I2CBurstWrite(I2C_base, BME280_DEVICE_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the write.
     I2CRead(I2C_base, BME280_DEVICE_ADDRESS, BME280_CONFIG, 1, state);
     UARTprintf("CONFIG: 0x%x\n\r", state[0]);
+#endif
 
     //
     // Configure the oversampling of the humidity sensor.
@@ -58,10 +62,12 @@ void InitBME280(uint32_t I2C_base, int8_t *offsetValues)
     txBuffer[1] = BME280_HUM_OS_X1;
     I2CBurstWrite(I2C_base, BME280_DEVICE_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the write.
     I2CRead(I2C_base, BME280_DEVICE_ADDRESS, BME280_CTRL_HUM, 1, state);
     UARTprintf("CTRL_HUM: 0x%x\n\r", state[0]);
+#endif
 
     //
     // Configure the oversampling of the sensors.
@@ -69,10 +75,12 @@ void InitBME280(uint32_t I2C_base, int8_t *offsetValues)
     txBuffer[1] = BME280_PRES_OS_X16 | BME280_TEMP_OS_X2 | BME280_NORMAL_MODE;
     I2CBurstWrite(I2C_base, BME280_DEVICE_ADDRESS, 2, txBuffer);
 
+#if DEBUG
     //
     // Check the write.
     I2CRead(I2C_base, BME280_DEVICE_ADDRESS, BME280_CTRL_MEAS, 1, state);
     UARTprintf("CTRL_MEAS: 0x%x\n\r", state[0]);
+#endif
 
     //
     // Get the offset values from the sensor.
