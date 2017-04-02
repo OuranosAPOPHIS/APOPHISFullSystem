@@ -71,6 +71,8 @@
 #define ZEROTHROTTLE 2239
 #define MAXTHROTTLE 4000
 
+#define STABBIAS true
+
 //*****************************************************************************
 //
 // Function prototypes
@@ -383,13 +385,13 @@ int main(void) {
 	uint32_t ui32ServoSpeed = 0;
 #endif
 
-#if IMU_ACTIVATED
+#if STABBIAS
 	//
 	// Values for the gyro stability bias calculation.
     int numCalcs = 0;
     int index, j;
-    int32_t ui32Sum[3] = { 0 };
-    int16_t bias[3][50] = { 0 };
+    float fSum[3] = { 0 };
+    float fbias[3][50] = { 0 };
 #endif
 
 	//
@@ -523,45 +525,59 @@ int main(void) {
 #if IMU_ACTIVATED
 	InitIMU(g_offsetData);
 
+#if STABBIAS
+	//
+	// Calculate the gyro bias.
 	while (numCalcs < 50) {
-		if (g_IMUDataFlag) {
-			uint8_t status;
-			uint8_t IMUData[6] = { 0 };
+		uint8_t status;
+		uint8_t IMUData[6] = { 0 };
+		int16_t i16GyroData[3];
+		float fGyroDataUnCal[3];
+
+		//
+		// First check the status for which data is ready.
+		I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
+
+		//
+		// Check what status returned.
+		if ((status & 0xC0) == (BMI160_GYR_RDY | BMI160_ACC_RDY)) {
+			//
+			// Then get the data for the gyro.
+			I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 6, IMUData);
 
 			//
-			// First check the status for which data is ready.
-			I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
+			// Set the gyro data.
+			i16GyroData[0] = (((int16_t) IMUData[1] << 8) + (int8_t) IMUData[0]);
+			i16GyroData[1] = (((int16_t) IMUData[3] << 8) + (int8_t) IMUData[2]);
+			i16GyroData[2] = (((int16_t) IMUData[5] << 8) + (int8_t) IMUData[4]);
 
 			//
-			// Check what status returned.
-			if ((status & 0x40) == (BMI160_GYR_RDY)) {
-				//
-				// Get the data for the gyro.
-				I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 6, IMUData);
+			// Convert gyro data to float.
+			fGyroDataUnCal[0] = (((float) (i16GyroData[0])) / GYROLSB) - BGX;
+			fGyroDataUnCal[1] = (((float) (i16GyroData[1])) / GYROLSB) - BGY;
+			fGyroDataUnCal[2] = (((float) (i16GyroData[2])) / GYROLSB) - BGZ;
 
-				//
-				// Capture the gyro data.
-				bias[0][numCalcs] = (((int16_t) IMUData[1] << 8)
-						+ (int8_t) IMUData[0]);
-				bias[1][numCalcs] = (((int16_t) IMUData[3] << 8)
-						+ (int8_t) IMUData[2]);
-				bias[2][numCalcs] = (((int16_t) IMUData[5] << 8)
-						+ (int8_t) IMUData[4]);
+			//
+			// Calculate the calibrated gyro data.
+			fbias[0][numCalcs] = fGyroDataUnCal[0] * SGX + fGyroDataUnCal[1] * MGXY + fGyroDataUnCal[2] * MGXZ;
+			fbias[1][numCalcs] = fGyroDataUnCal[0] * MGYX + fGyroDataUnCal[1] * SGY + fGyroDataUnCal[2] * MGYZ;
+			fbias[2][numCalcs] = fGyroDataUnCal[0] * MGZX + fGyroDataUnCal[1] * MGZY + fGyroDataUnCal[2] * SGZ;
 
-				numCalcs++;
-			}
+			numCalcs++;
 		}
 	}
 
 	//
-	// Calculate the stability bias.
+	// Calculate the bias.
 	for (index = 0; index < numCalcs; index++)
 		for (j = 0; j < 3; j++)
-			ui32Sum[j] += bias[j][index];
+			fSum[j] += fbias[j][index];
 
 	for (index = 0; index < 3; index++)
-		g_GyroStabBias[index] = ui32Sum[index] / numCalcs;
+		g_GyroStabBias[index] = fSum[index] / numCalcs;
 #endif
+#endif
+
 
 	//
 	// Initialize the state of the system.
@@ -2243,12 +2259,9 @@ void ProcessIMUData(void) {
 
 		//
 		// Set the gyro data to the global variables.
-		i16GyroData[0] = (((int16_t) IMUData[1] << 8) + (int8_t) IMUData[0])
-				- g_GyroStabBias[0];
-		i16GyroData[1] = (((int16_t) IMUData[3] << 8) + (int8_t) IMUData[2])
-				- g_GyroStabBias[1];
-		i16GyroData[2] = (((int16_t) IMUData[5] << 8) + (int8_t) IMUData[4])
-				- g_GyroStabBias[2];
+		i16GyroData[0] = (((int16_t) IMUData[1] << 8) + (int8_t) IMUData[0]);
+		i16GyroData[1] = (((int16_t) IMUData[3] << 8) + (int8_t) IMUData[2]);
+		i16GyroData[2] = (((int16_t) IMUData[5] << 8) + (int8_t) IMUData[4]);
 
 		//
 		// Convert data to float.
@@ -2258,9 +2271,9 @@ void ProcessIMUData(void) {
 
 		//
 		// Calculate the calibrated gyro data.
-		sSensStatus.fCurrentGyroX = fGyroDataUnCal[0] * SGX + fGyroDataUnCal[1] * MGXY + fGyroDataUnCal[2] * MGXZ;
-		sSensStatus.fCurrentGyroY = fGyroDataUnCal[0] * MGYX + fGyroDataUnCal[1] * SGY + fGyroDataUnCal[2] * MGYZ;
-		sSensStatus.fCurrentGyroZ = fGyroDataUnCal[0] * MGZX + fGyroDataUnCal[1] * MGZY + fGyroDataUnCal[2] * SGZ;
+		sSensStatus.fCurrentGyroX = (fGyroDataUnCal[0] * SGX + fGyroDataUnCal[1] * MGXY + fGyroDataUnCal[2] * MGXZ) - g_GyroStabBias[0];
+		sSensStatus.fCurrentGyroY = (fGyroDataUnCal[0] * MGYX + fGyroDataUnCal[1] * SGY + fGyroDataUnCal[2] * MGYZ) - g_GyroStabBias[1];
+		sSensStatus.fCurrentGyroZ = (fGyroDataUnCal[0] * MGZX + fGyroDataUnCal[1] * MGZY + fGyroDataUnCal[2] * SGZ) - g_GyroStabBias[2];
 
 		//
 		// Set the accelerometer data.
