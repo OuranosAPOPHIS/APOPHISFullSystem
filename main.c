@@ -499,6 +499,7 @@ int main(void) {
 	//
 	// Initialize the angle of the system to the starting position.
 	g_ui32ServoAngle = g_ui32ServoStartPosition;
+	PWMGenEnable(PWM0_BASE, PWM_GEN_3);
 #endif
 
 	//
@@ -584,7 +585,6 @@ int main(void) {
 #endif
 #endif
 
-
 	//
 	// Initialize the state of the system.
 #if	GNDMTRS_ACTIVATED
@@ -642,11 +642,14 @@ int main(void) {
 #if DEBUG
 	//
 	// Before starting program, wait for a button press on either switch.
-	UARTprintf("Initialization Complete!\r\nPress left button to start.\r\n");
+	UARTprintf("Initialization Complete!\r\nPress left button to start or\r\n");
+	UARTprintf("click the 'ARM' button on the GUI.\n\r");
 #endif
 
 	TurnOnLED(5);
 
+	//
+	// Wait to start arming everything until the user arms the system.
 	WaitForArming();
 
 	TurnOffLED(5);
@@ -682,14 +685,15 @@ int main(void) {
 	TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
 #endif
 
+#if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
 	//
 	// Enable trajectory timer.
 	TimerEnable(UPDATE_TIMER, TIMER_B);
+#endif
 
 	//
 	// Print menu.
 	Menu('M');
-	Menu('l');
 
 	//
 	// Initialization complete. Enable interrupts.
@@ -1424,25 +1428,28 @@ bool WaitForButtonPress(uint8_t desiredButtonState) {
 	// Get the state of the buttons.
 	actualButtonState = ButtonsPoll(pDelta, pRawButtonState);
 
+	//
+	// Unmask the button state.
+
 	switch (desiredButtonState)
 	{
 	case LEFT_BUTTON:
 	{
-		if (actualButtonState == LEFT_BUTTON)
+		if (actualButtonState & LEFT_BUTTON)
 			return true;
 
 		break;
 	}
 	case RIGHT_BUTTON:
 	{
-		if (actualButtonState == RIGHT_BUTTON)
+		if (actualButtonState & RIGHT_BUTTON)
 			return true;
 
 		break;
 	}
 	case ALL_BUTTONS:
 	{
-		if (actualButtonState == ALL_BUTTONS)
+		if (actualButtonState & ALL_BUTTONS)
 			return true;
 
 		break;
@@ -1462,11 +1469,46 @@ void Menu(char charReceived) {
 	//
 	// Check the character received.
 	switch (charReceived) {
+	case 'M': // Print Menu.
+	{
+		UARTprintf("Menu:\r\nM - Print this menu.\r\n");
+		UARTprintf("Q - Quit this program.\r\n");
+#if GPS_ACTIVATED
+		UARTprintf("P - Print raw GPS data.\r\n");
+#endif
+#if IMU_ACTIVATED
+		UARTprintf("B - Print raw accel, gyro and mag data.\r\n");
+#endif
+#if SECONDARY_ATTITUDE
+		UARTprintf("A - Trigger solar panel ADC.\r\n");
+#endif
+#if ULTRASONIC_ACTIVATED
+		UARTprintf("1 - Trigger ultra sonic sensor #1.\r\n");
+		UARTprintf("2 - Trigger ultra sonic sensor #2.\r\n");
+#endif
+#if AIRMTRS_ACTIVATED
+		UARTprintf("w - Increase air motor throttle.\r\n");
+		UARTprintf("s - Decrease air motor throttle.\r\n");
+		UARTprintf("x - Stop the motors.\r\n");
+#endif
+#if GNDMTRS_ACTIVATED
+		UARTprintf("i - Increase ground motor throttle.\r\n");
+		UARTprintf("k - Decrease ground motor throttle.\r\n");
+		UARTprintf("0 - Cut ground motor throttle.\r\n");
+		UARTprintf("l - Turn on/off LED for ground motors.\r\n");
+#endif
+#if PAYLOAD_DEPLOY
+		UARTprintf("D - Deploy payload.\r\n");
+#endif
+		break;
+	}
 	case 'Q': // Quit the program
 	{
 		g_Quit = true;
+
 		break;
 	}
+#if GPS_ACTIVATED
 	case 'P': // Print Raw GPS data.
 	{
 		if (g_PrintRawGPS)
@@ -1475,6 +1517,8 @@ void Menu(char charReceived) {
 			g_PrintRawGPS = true;
 		break;
 	}
+#endif
+#if IMU_ACTIVATED
 	case 'B': // Print raw accel, gyro and mag data.
 	{
 		if (g_PrintRawBMIData)
@@ -1483,25 +1527,8 @@ void Menu(char charReceived) {
 			g_PrintRawBMIData = true;
 		break;
 	}
-	case 'M': // Print Menu.
-	{
-		UARTprintf("Menu:\r\nM - Print this menu.\r\n");
-		UARTprintf("P - Print raw GPS data.\r\n");
-		UARTprintf("B - Print raw accel, gyro and mag data.\r\n");
-		UARTprintf("A - Trigger solar panel ADC.\r\n");
-		UARTprintf("1 - Trigger ultra sonic sensor #1.\r\n");
-		UARTprintf("2 - Trigger ultra sonic sensor #2.\r\n");
-		UARTprintf("w - Increase air motor throttle.\r\n");
-		UARTprintf("s - Decrease air motor throttle.\r\n");
-		UARTprintf("x - Stop the motors.\r\n");
-		UARTprintf("i - Increase ground motor throttle.\r\n");
-		UARTprintf("k - Decrease ground motor throttle.\r\n");
-		UARTprintf("0 - Cut ground motor throttle.\r\n");
-		UARTprintf("D - Deploy payload.\r\n");
-		UARTprintf("Q - Quit this program.\r\n");
-
-		break;
-	}
+#endif
+#if SECONDARY_ATTITUDE
 	case 'A': // Trigger solar panel ADC.
 	{
 		if (ADCBusy(SP_ADC)) {
@@ -1511,6 +1538,8 @@ void Menu(char charReceived) {
 		}
 		break;
 	}
+#endif
+#if ULTRASONIC_ACTIVATED
 	case '1': // Trigger ultrasonic sensor #1
 	{
 		//
@@ -1559,6 +1588,8 @@ void Menu(char charReceived) {
 
 		break;
 	}
+#endif
+#if AIRMTRS_ACTIVATED
 	case 'w': // Increase throttle of air motors.
 	{
 		sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
@@ -1584,16 +1615,18 @@ void Menu(char charReceived) {
 		UARTprintf("Throttle Decrease: %d\r\n", sThrottle.fAirMtr1Throttle);
 		break;
 	}
-	case 'x': // kill the throttle.
+	case 'x': // kill the air throttle.
 	{
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
 		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
 
-		UARTprintf("Throttle Decrease: %d\r\n", ZEROTHROTTLE);
+		UARTprintf("Throttle zeroed: %d\r\n", ZEROTHROTTLE);
 		break;
 	}
+#endif
+#if GNDMTRS_ACTIVATED
 	case 'i': // Increase ground motor throttle.
 	{
 		uint8_t txBuffer[4];
@@ -1713,10 +1746,13 @@ void Menu(char charReceived) {
 				3, txBuffer);
 	break;
 	}
+#endif
 #if PAYLOAD_DEPLOY
-	case 'd': // Deploy the payload.
+	case 'D': // Deploy the payload.
 	{
-		g_ui32ServoAngle = g_ui32ServoEndPosition;
+		DeployPayload();
+
+		break;
 	}
 #endif
 	}
@@ -2346,6 +2382,10 @@ void DeployPayload(void)
 
 	PWMPulseWidthSet(PWM0_BASE, SERVO_1, g_ui32ServoAngle);
 	PWMPulseWidthSet(PWM0_BASE, SERVO_2, g_ui32ServoAngle);
+
+	//
+	// Modify the flag.
+	sStatus.bPayDeployed = true;
 
 #if DEBUG
 	UARTprintf("Payload Deployed\r\n");
