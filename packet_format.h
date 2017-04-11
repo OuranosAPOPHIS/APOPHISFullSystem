@@ -84,8 +84,8 @@ typedef struct {
 typedef struct  {
     char pad[3];
     char type;          // Target or Control command? T or C? (or anything else indicates bad target data)
-    float throttle;   // Desired throttle level.
-    float throttle2;    // Desired left wheel throttle level for ground travel.
+    int32_t throttle;   // Desired throttle level.
+    int32_t throttle2;    // Desired left wheel throttle level for ground travel.
     float roll;         // Desired roll angle.
     float pitch;        // Desired pitch angle.
     float yaw;          // Desired yaw angle.

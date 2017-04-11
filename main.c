@@ -380,6 +380,11 @@ uint32_t g_ui32ServoEndPosition = 0;
 
 uint32_t g_ui32ServoAngle = 0;
 
+//
+// Left and right wheel throttles.
+int32_t g_ui32RWThrottle = 0;
+int32_t g_ui32LWThrottle = 0;
+
 //*****************************************************************************
 //
 // Start of program.
@@ -639,14 +644,23 @@ int main(void) {
 	g_Pack.pack.Magic[1] = 0xFF;
 	g_Pack.pack.Magic[2] = 0xFF;
 
+#if (RADIO_ACTIVATED)
+	//
+	// Activate the radio timers.
+	TimerEnable(RADIO_TIMER, TIMER_A);
+	TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
+#endif
+
+	//
+	// Initialization complete. Enable interrupts.
+	IntMasterEnable();
+
 #if DEBUG
 	//
 	// Before starting program, wait for a button press on either switch.
 	UARTprintf("Initialization Complete!\r\nPress left button to start or\r\n");
-	UARTprintf("click the 'ARM' button on the GUI.\n\r");
+	UARTprintf("click the 'Arm System' button on the GUI.\n\r");
 #endif
-
-	TurnOnLED(5);
 
 	//
 	// Wait to start arming everything until the user arms the system.
@@ -678,12 +692,6 @@ int main(void) {
 
 #endif
 
-#if (RADIO_ACTIVATED)
-	//
-	// Activate the radio timers.
-	TimerEnable(RADIO_TIMER, TIMER_A);
-	TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
-#endif
 
 #if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
 	//
@@ -694,10 +702,6 @@ int main(void) {
 	//
 	// Print menu.
 	Menu('M');
-
-	//
-	// Initialization complete. Enable interrupts.
-	IntMasterEnable();
 
 	//
 	// Program start.
@@ -732,6 +736,10 @@ int main(void) {
 		if (g_BME280Ready)
 			ProcessBME280();
 
+		//
+		// Check if the system was disarmed.
+		if (!sStatus.bArmed)
+			WaitForArming();
 	}
 
 #if DEBUG
@@ -842,7 +850,8 @@ void RadioIntHandler(void) {
 				//
 				// Get the chars over the UART.
 				g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
-				if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0')
+				if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0' ||
+						g_sRxPack.ui8Data[3] == 'A' || g_sRxPack.ui8Data[3] == 'D')
 						&& ui8Index >= sizeof(tGSTPacket))
 						|| (g_sRxPack.ui8Data[3] == 'C'
 								&& ui8Index >= sizeof(tGSCPacket))) {
@@ -871,7 +880,9 @@ void RadioIntHandler(void) {
 							&& ui8Magic[(ui8Index + 2) % 4] == 0xFF
 							&& (ui8Magic[(ui8Index + 3) % 4] == 'T'
 									|| ui8Magic[(ui8Index + 3) % 4] == 'C'
-									|| ui8Magic[(ui8Index + 3) % 4] == '0')) {
+									|| ui8Magic[(ui8Index + 3) % 4] == '0'
+									|| ui8Magic[(ui8Index +3) % 4] == 'A'
+									|| ui8Magic[(ui8Index + 3) % 4] == 'D')) {
 						g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index + 3) % 4];
 						ui8Index = 4;
 						bValidData = true;
@@ -1962,103 +1973,107 @@ void ProcessGPS(void) {
 //
 //*****************************************************************************
 void ProcessRadio(void) {
-	switch (g_sRxPack.ui8Data[3]) {
-	case 'T': {
-		//
-		// Change the status of the platform.
-		sStatus.bMode = true;
+	if (sStatus.bArmed) { // Don't mess with any system states until the system is armed.
+		switch (g_sRxPack.ui8Data[3]) {
+		case 'T': {
+			//
+			// Change the status of the platform.
+			sStatus.bMode = true;
 
-		//
-		// Set the update trajectory to autonomous.
-		if (sStatus.bFlyOrDrive)
-			TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoFlyUpdate);
-		else
-			TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoDriveUpdate);
+			//
+			// Set the update trajectory to autonomous.
+			if (sStatus.bFlyOrDrive)
+				TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoFlyUpdate);
+			else
+				TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoDriveUpdate);
 
-		//
-		// The target location has now been set.
-		sStatus.bTargetSet = true;
+			//
+			// The target location has now been set.
+			sStatus.bTargetSet = true;
 
-		break;
-	}
-	case 'C': {
-		//
-		// Change the status of the platform.
-		sStatus.bMode = false;
+			break;
+		}
+		case 'C': {
+			//
+			// Change the status of the platform.
+			sStatus.bMode = false;
 
-		//
-		// Check if we are flying or driving and update the Status.
-		if (g_sRxPack.sControlPacket.flyordrive
-				== g_sRxPack.sControlPacket.fdConfirm)
-			if (g_sRxPack.sControlPacket.flyordrive == 'D')
-				sStatus.bFlyOrDrive = false;
-			else if (g_sRxPack.sControlPacket.flyordrive == 'F')
-				sStatus.bFlyOrDrive = true;
+			//
+			// Check if we are flying or driving and update the Status.
+			if (g_sRxPack.sControlPacket.flyordrive
+					== g_sRxPack.sControlPacket.fdConfirm)
+				if (g_sRxPack.sControlPacket.flyordrive == 'D')
+					sStatus.bFlyOrDrive = false;
+				else if (g_sRxPack.sControlPacket.flyordrive == 'F')
+					sStatus.bFlyOrDrive = true;
 
-		//
-		// Set the update trajectory to manual.
-		if (sStatus.bFlyOrDrive)
-			TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualFlyUpdate);
-		else
-			TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
+			//
+			// Set the update trajectory to manual.
+			if (sStatus.bFlyOrDrive)
+				TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualFlyUpdate);
+			else {
+				TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
 
-		//
-		// Check if we should deploy the payload.
-		if ((!sStatus.bPayDeployed)
-				&& (g_sRxPack.sControlPacket.payloadRelease
-						== g_sRxPack.sControlPacket.prConfirm))
-			if ((g_sRxPack.sControlPacket.payloadRelease == 1)
-					&& (!sStatus.bPayDeploying)) {
-				sStatus.bPayDeploying = true;
-				DeployPayload();
+				//
+				// Get the wheel throttles. They will be sent as percentages from -100 to 100.
+				g_ui32RWThrottle = (g_sRxPack.sControlPacket.throttle);
+				g_ui32LWThrottle = (g_sRxPack.sControlPacket.throttle2);
 			}
+			//
+			// Check if we should deploy the payload.
+			if ((!sStatus.bPayDeployed)
+					&& (g_sRxPack.sControlPacket.payloadRelease
+							== g_sRxPack.sControlPacket.prConfirm))
+				if ((g_sRxPack.sControlPacket.payloadRelease == 1)
+						&& (!sStatus.bPayDeploying)) {
+					sStatus.bPayDeploying = true;
+					DeployPayload();
+				}
 
-		break;
+			break;
+		}
+		case '0': {
+			//
+			// Change the mode to autonomous.
+			sStatus.bMode = true;
+
+			//
+			// Set the update trajectory to autonomous.
+			if (sStatus.bFlyOrDrive)
+				TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoFlyUpdate);
+			else
+				TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoDriveUpdate);
+
+			//
+			// Receiving bad data. Tell main to ignore it.
+			sStatus.bTargetSet = false;
+
+			break;
+		}
+		case 'D': {
+			//
+			// Disarm the system.
+			//
+			// Disable the update trajectory and shut off all motors.
+			sStatus.bArmed = false;
+
+			//
+			// TODO: First must disable the motors and stuff, in case they are running.
+			break;
+		}
+		}
+	} else { // Arm the System.
+		switch (g_sRxPack.ui8Data[3]) {
+		case 'A': {
+			//
+			// Arm the system.
+			// This is equivalent to pushing the button on the microcontroller.
+			sStatus.bArmed = true;
+
+			break;
+		}
+		}
 	}
-	case '0': {
-		//
-		// Change the mode to autonomous.
-		sStatus.bMode = true;
-
-		//
-		// Set the update trajectory to autonomous.
-		if (sStatus.bFlyOrDrive)
-			TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoFlyUpdate);
-		else
-			TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoDriveUpdate);
-
-		//
-		// Receiving bad data. Tell main to ignore it.
-		sStatus.bTargetSet = false;
-
-		break;
-	}
-	case 'A':
-	{
-		//
-		// Arm the system.
-		// This is equivalent to pushing the button on the microcontroller.
-		sStatus.bArmed = true;
-
-		break;
-	}
-	case 'D':
-	{
-		//
-		// Disarm the system.
-		//
-		// Disable the update trajectory and shut off all motors.
-		sStatus.bArmed = false;
-
-		//
-		// TODO: First must disable the motors and stuff, in case they are running.
-		WaitForArming();
-	}
-	}
-
-	//
-	// Reset the connection lost timer.
-	// TODO: Set up a connection lost timeout timer.
 
 	//
 	// Reset the flag.
@@ -2401,10 +2416,18 @@ void DeployPayload(void)
 //*****************************************************************************
 void WaitForArming(void)
 {
+	TurnOnLED(5);
+
 	while (!sStatus.bArmed) {
 		if (WaitForButtonPress(LEFT_BUTTON))
 				sStatus.bArmed = true;
 	}
+
+	TurnOffLED(5);
+
+	//
+	// Arm all of the interrupts here.
+
 }
 
 //*****************************************************************************
@@ -2937,48 +2960,42 @@ void ManualDriveUpdate(void) {
 	uint8_t txBuffer[4];
 
 	//
-	// We are driving. Set the parameters sent from the radio.
-	// Get the wheel throttles. They will be sent as percentages from -100 to 100.
-	int32_t ui32RWThrottle = (int32_t) (g_sRxPack.sControlPacket.throttle);
-	int32_t ui32LWThrottle = (int32_t) (g_sRxPack.sControlPacket.throttle2);
-
-	//
 	// Check to make sure neither throttle exceeds 100.
-	if (ui32RWThrottle > 100)
-		ui32RWThrottle = 100;
-	if (ui32RWThrottle < -100)
-		ui32RWThrottle = -100;
-	if (ui32LWThrottle > 100)
-		ui32LWThrottle = 100;
-	if (ui32LWThrottle < -100)
-		ui32LWThrottle = -100;
+	if (g_ui32RWThrottle > 100)
+		g_ui32RWThrottle = 100;
+	if (g_ui32RWThrottle < -100)
+		g_ui32RWThrottle = -100;
+	if (g_ui32LWThrottle > 100)
+		g_ui32LWThrottle = 100;
+	if (g_ui32LWThrottle < -100)
+		g_ui32LWThrottle = -100;
 
 	//
 	// Check the direction. For the LW, CCW is the forward direction.
-	if (ui32LWThrottle >= 0) {
+	if (g_ui32LWThrottle >= 0) {
 		//
 		// Rotate the wheel in the CCW direction. (0 - 1023)
 		sThrottle.ui16GndMtrLWThrottle = RX24_THROTTLE_INCREMENT
-				* ui32LWThrottle;
-	} else if (ui32LWThrottle < 0) {
+				* g_ui32LWThrottle;
+	} else if (g_ui32LWThrottle < 0) {
 		//
 		// Rotate the wheel in the CW direction. (1024 - 2047).
 		sThrottle.ui16GndMtrLWThrottle = RX24_THROTTLE_INCREMENT
-				* (-ui32LWThrottle) + 1024;
+				* (-g_ui32LWThrottle) + 1024;
 	}
 
 	//
 	// Check the RW direction. CW is forward direction.
-	if (ui32RWThrottle >= 0) {
+	if (g_ui32RWThrottle >= 0) {
 		//
 		// Rotate the wheel in the CW direction. (1024 - 2047)
 		sThrottle.ui16GndMtrRWThrottle = RX24_THROTTLE_INCREMENT
-				* ui32RWThrottle + 1024;
-	} else if (ui32RWThrottle < 0) {
+				* g_ui32RWThrottle + 1024;
+	} else if (g_ui32RWThrottle < 0) {
 		//
 		// Rotate the wheel in the CCW direction. (0 - 1023).
 		sThrottle.ui16GndMtrRWThrottle = RX24_THROTTLE_INCREMENT
-				* (-ui32RWThrottle);
+				* (-g_ui32RWThrottle);
 	}
 
 	//
@@ -3004,8 +3021,8 @@ void ManualDriveUpdate(void) {
 #if DEBUG
 	if (g_PrintFlag) {
 		UARTprintf("Driving.\r\n");
-		UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", ui32RWThrottle,
-				ui32LWThrottle);
+		UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", g_ui32RWThrottle,
+				g_ui32LWThrottle);
 	}
 #endif
 }

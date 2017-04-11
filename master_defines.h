@@ -15,11 +15,11 @@
 
 #define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
-#define GNDMTRS_ACTIVATED false
+#define GNDMTRS_ACTIVATED true
 #define SECONDARY_ATTITUDE false
 #define ULTRASONIC_ACTIVATED false
 #define PAYLOAD_DEPLOY true
-#define IMU_ACTIVATED false
+#define IMU_ACTIVATED true
 #define ALTIMETER_ACTIVATED false
 #define AIRMTRS_ACTIVATED false
 
