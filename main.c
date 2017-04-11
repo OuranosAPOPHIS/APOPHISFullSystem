@@ -2428,11 +2428,10 @@ void AutoFlyUpdate(void) {
 	float fRolldotdotDes;
 	float fPitchdotdotDes;
 	float fYawdotdotDes;
-	float fMatThdotdot;
-	float fMatBinv;
-	float fMatTorque;
-	float fMatTot;
-	float fThrustDes;
+	float fMatThdotdot[3];
+	float fMatBinv[4][4];
+	float fMatTorque[4];
+	float fThrustDes[4];
 
 	//
 	// TODO: This is where the control law and stuff will go.
@@ -2444,6 +2443,17 @@ void AutoFlyUpdate(void) {
 
 		//
 		// TODO: Calculate a trajectory.
+		sStatus.fRoll = sAttData.fRoll;
+		sStatus.fPitch = sAttData.fPitch;
+		sStatus.fYaw = sAttData.fYaw;
+		if (sSensStatus.fThrust ==0){
+		StaticUpdateAttitude(&sAttData);
+		}else{
+		DynamicUpdateAttitude(&sAttData);
+		}
+		sAttData.fRoll = sStatus.fRoll;
+		sAttData.fPitch = sStatus.fPitch;
+		sAttData.fYaw = sStatus.fYaw;
 		if ((sStatus.fCurrentAlt > sStatus.fTargetAlt) && (sStatus.fCurrentAlt - sStatus.fTargetAlt > 0.03)) {
 				sStatus.fTargetAlt = sStatus.fCurrentAlt - 0.03;
 		}
@@ -2505,12 +2515,19 @@ void AutoFlyUpdate(void) {
 		fYawdotdotDes = (fYawdotDes - sSensStatus.fCurrentGyroZ) * fKdYa;
 
 // This matrix math is definitely wrong.
-		fMatThdotdot[1][3] = {fRolldotdotDes, fPitchdotdotDes, fYawdotdotDes};
-		fMatTorque[1][3] = fMatI * fMatThdotdot;
-		fMatTot[1][4] = {fMatTorque,fFzSat };
+		fMatThdotdot[0] = fRolldotdotDes;
+		fMatThdotdot[1] = fPitchdotdotDes;
+		fMatThdotdot[2] = fYawdotdotDes;
+		fMatTorque[0] = fMatI[0][0] * fMatThdotdot[0] + fMatI[0][1] * fMatThdotdot[1] + fMatI[0][2] * fMatThdotdot[2];
+		fMatTorque[1] = fMatI[1][0] * fMatThdotdot[0] + fMatI[1][1] * fMatThdotdot[1] + fMatI[1][2] * fMatThdotdot[2];
+		fMatTorque[2] = fMatI[2][0] * fMatThdotdot[0] + fMatI[2][1] * fMatThdotdot[1] + fMatI[2][2] * fMatThdotdot[2];
+		fMatTorque[3] = fFzSat;
 
-		fThrustDes[1][4] = fMatBinv * fMatTot;
-		sSensStatus.fThrust = fThrustDes[1] + fThrustDes[2] + fThrustDes[3] + fThrustDes[4]
+		fThrustDes[0] = fBinx[0][0] * fMatThdotdot[0] + fBinv[0][1] * fMatThdotdot[1] + fBinv[0][2] * fMatThdotdot[2] + Binv[0][3] * fMatThdotdot[3];
+		fThrustDes[1] = fBinx[1][0] * fMatThdotdot[0] + fBinv[1][1] * fMatThdotdot[1] + fBinv[1][2] * fMatThdotdot[2] + Binv[1][3] * fMatThdotdot[3];
+		fThrustDes[2] = fBinx[2][0] * fMatThdotdot[0] + fBinv[2][1] * fMatThdotdot[1] + fBinv[2][2] * fMatThdotdot[2] + Binv[2][3] * fMatThdotdot[3];
+		fThrustDes[3] = fBinx[3][0] * fMatThdotdot[0] + fBinv[3][1] * fMatThdotdot[1] + fBinv[3][2] * fMatThdotdot[2] + Binv[3][3] * fMatThdotdot[3];
+		sSensStatus.fThrust = fThrustDes[0] + fThrustDes[1] + fThrustDes[2] + fThrustDes[3];
 	} else {
 		//
 		// Radio data is bad. Set the current location as the target location.
