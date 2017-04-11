@@ -660,8 +660,7 @@ void InitIMU(uint8_t *offsetCompensation) {
 	I2CMasterEnable(BOOST_I2C);
 
 	//
-	// Since BME280 does not have interrupts,
-	// configure timer to poll data.
+	// Enable the timer.
 	SysCtlPeripheralEnable(DCM_TIMER_PERIPH);
 
 	//
@@ -671,8 +670,6 @@ void InitIMU(uint8_t *offsetCompensation) {
 	TimerConfigure(DCM_TIMER, TIMER_CFG_SPLIT_PAIR | TIMER_CFG_A_PERIODIC |
 			TIMER_CFG_B_PERIODIC);
 	TimerLoadSet(DCM_TIMER, TIMER_A, CLOCK_PIOSC / DCM_UPDATE_RATE);
-	TimerLoadSet(UPDATE_TIMER, TIMER_B, CLOCK_PIOSC / UPDATE_TRAJECTORY_RATE);
-
 
 	//
 	// Configure the interrupts for the timer.
@@ -681,9 +678,6 @@ void InitIMU(uint8_t *offsetCompensation) {
 	IntEnable(DCM_TIMER_INT);
 	TimerIntRegister(DCM_TIMER, TIMER_A, DCMUpdateTimer);
 
-	TimerIntClear(UPDATE_TIMER, TIMER_TIMB_TIMEOUT);
-	TimerIntEnable(UPDATE_TIMER, TIMER_TIMB_TIMEOUT);
-	IntEnable(UPDATE_TIMER_INT);
 
 	//
 	// Before calling the BMI160 initialize function, make sure the I2C
@@ -974,4 +968,28 @@ uint32_t InitServoMtrs(void) {
 #endif
 
 	return speed;
+}
+
+/*
+ * Initialization for the update trajectory timer.
+ */
+void InitTrajectoryTimer(void)
+{
+	//
+	// Enable the timer.
+	SysCtlPeripheralEnable(DCM_TIMER_PERIPH);
+
+	//
+	// Configure the timer to run at 100 Hz for both
+	// the updateTrajectory().
+	TimerClockSourceSet(UPDATE_TIMER, TIMER_CLOCK_PIOSC);
+	TimerConfigure(UPDATE_TIMER, TIMER_CFG_SPLIT_PAIR | TIMER_CFG_A_PERIODIC |
+			TIMER_CFG_B_PERIODIC);
+	TimerLoadSet(UPDATE_TIMER, TIMER_B, CLOCK_PIOSC / UPDATE_TRAJECTORY_RATE);
+
+	//
+	// Set up the timer interrupts.
+	TimerIntClear(UPDATE_TIMER, TIMER_TIMB_TIMEOUT);
+	TimerIntEnable(UPDATE_TIMER, TIMER_TIMB_TIMEOUT);
+	IntEnable(UPDATE_TIMER_INT);
 }

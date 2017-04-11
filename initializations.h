@@ -53,4 +53,7 @@ void InitAltimeter(int8_t *offsetValues);
 uint32_t InitAirMtrs(uint32_t zeroThrottle);
 uint32_t InitServoMtrs(void);
 
+void InitTrajectoryTimer(void);
+
+
 #endif /* INITIALIZATIONS_H_ */

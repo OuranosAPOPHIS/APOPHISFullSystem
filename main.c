@@ -2,7 +2,7 @@
  * Project: Aerial Platform for Overland Haul and Import System (APOPHIS)
  *
  *  Created On: Jan 20, 2017
- *  Last Updated: April 1, 2017
+ *  Last Updated: April 3, 2017
  *      Author(s): Brandon Klefman
  *
  *      Purpose: Flight computer for the APOPHIS platform.
@@ -71,7 +71,11 @@
 #define ZEROTHROTTLE 2239
 #define MAXTHROTTLE 4000
 
+#if IMU_ACTIVATED
 #define STABBIAS true
+#else
+#define STABBIAS false
+#endif
 
 //*****************************************************************************
 //
@@ -589,14 +593,16 @@ int main(void) {
 
 #if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
 	if (sStatus.bFlyOrDrive) {
-		g_Pack.pack.movement = 'D';
-		TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
-	}
-	else {
-		g_Pack.pack.movement = 'F';
 		TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualFlyUpdate);
 	}
+	else {
+		TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
+	}
 #endif
+
+	//
+	// Turn on the trajectory timer.
+	InitTrajectoryTimer();
 
 	sStatus.bMode = false;
 	sStatus.bPayDeployed = false;
@@ -642,10 +648,12 @@ int main(void) {
 
 	TurnOffLED(5);
 
+#if IMU_ACTIVATED
 	//
 	// Initialize the DCM.
 	CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.2f, 0.6f, 0.2f);
 	g_bDCMStarted = false;
+#endif
 
 	//
 	// Turn off LED1, and enable the systick at 12 Hz to
@@ -673,11 +681,12 @@ int main(void) {
 
 	//
 	// Enable trajectory timer.
-	//TimerEnable(UPDATE_TIMER, TIMER_B);
+	TimerEnable(UPDATE_TIMER, TIMER_B);
 
 	//
 	// Print menu.
 	Menu('M');
+	Menu('l');
 
 	//
 	// Initialization complete. Enable interrupts.
@@ -1955,13 +1964,6 @@ void ProcessRadio(void) {
 		sStatus.bMode = false;
 
 		//
-		// Set the update trajectory to manual.
-		if (sStatus.bFlyOrDrive)
-			TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualFlyUpdate);
-		else
-			TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
-
-		//
 		// Check if we are flying or driving and update the Status.
 		if (g_sRxPack.sControlPacket.flyordrive
 				== g_sRxPack.sControlPacket.fdConfirm)
@@ -1969,6 +1971,13 @@ void ProcessRadio(void) {
 				sStatus.bFlyOrDrive = false;
 			else if (g_sRxPack.sControlPacket.flyordrive == 'F')
 				sStatus.bFlyOrDrive = true;
+
+		//
+		// Set the update trajectory to manual.
+		if (sStatus.bFlyOrDrive)
+			TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualFlyUpdate);
+		else
+			TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
 
 		//
 		// Check if we should deploy the payload.
@@ -2617,7 +2626,7 @@ void ManualFlyUpdate(void)
 	//
 	// Clear the interrupt.
 	TimerIntClear(UPDATE_TIMER, ui32Status);
-
+/*
 	float fDesiredRoll = 0.0f;
 	float fDesiredPitch = 0.0f;
 	//
@@ -2667,7 +2676,7 @@ void ManualFlyUpdate(void)
 		//
 		// Calculate the roll, pitch and yaw.
 		fDesiredRoll = g_sRxPack.sControlPacket.roll / 100.0f * 25.0f;
-		fDesiredPitch = g_sRxPack.sControlPacket.pitch / 100.0f * 25.0f;
+		fDesiredPitch = g_sRxPack.sControlPacket.pitch / 100.0f * 25.0f; */
 /*
 		//
 		// Check if the pitch error is less than 0.5 or -0.5.
