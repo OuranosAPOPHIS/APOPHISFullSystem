@@ -103,16 +103,17 @@ void ProcessGPS(void);
 void ProcessRadio(void);
 void ProcessADC(void);
 int ProcessUltraSonic(uint32_t SysClockSpeed);
-void ActivateSolenoids(void);
-void DeactivateSolenoids(void);
+void DeployPayload(void);
 void SendPacket(void);
 void ProcessIMUData(void);
 void ProcessBME280(void);
-void WaitForButtonPress(uint8_t ButtonState);
+bool WaitForButtonPress(uint8_t desiredButtonState);
+void WaitForArming(void);
 void ManualDriveUpdate(void);
 void ManualFlyUpdate(void);
 void AutoFlyUpdate(void);
 void AutoDriveUpdate(void);
+void WatiForArming(void);
 
 //*****************************************************************************
 //
@@ -147,6 +148,7 @@ typedef struct {
 	float fTargetAlt;		// Target Altitude.
 	float fTempTargetLat;// Temporary target latitude for before the location is set by the GS.
 	float fTempTargetLong; // Temporary target longitude for before the location is set by the GS.
+	bool bArmed;			// boolean armed indicator. true means the system is armed. False is disarmed.
 } SystemStatus;
 
 //
@@ -609,6 +611,7 @@ int main(void) {
 	sStatus.bRadioConnected = false;
 	sStatus.bTargetSet = false;
 	sStatus.fMass = 16;
+	sStatus.bArmed = false;
 
 	//
 	// Initialize the sensor states.
@@ -644,7 +647,7 @@ int main(void) {
 
 	TurnOnLED(5);
 
-	WaitForButtonPress(LEFT_BUTTON);
+	WaitForArming();
 
 	TurnOffLED(5);
 
@@ -1153,29 +1156,6 @@ void Timer1BInterrupt(void) {
 
 //*****************************************************************************
 //
-// Interrupt handler for the Solenoid timer in order to turn off the solenoid
-// after a short time.
-//
-//*****************************************************************************
-void SolenoidInterrupt(void) {
-	uint32_t timerStatus;
-
-	//
-	// Get the timer interrupt status and clear the interrupt.
-	timerStatus = TimerIntStatus(SOLENOID_TIMER, true);
-	TimerIntClear(SOLENOID_TIMER, timerStatus);
-
-	//
-	// Deactivate the solenoid enable pins.
-	DeactivateSolenoids();
-
-	//
-	// Disable the timer.
-	TimerDisable(SOLENOID_TIMER, TIMER_A);
-}
-
-//*****************************************************************************
-//
 // Interrupt handler for the BMI160 sensor unit.
 //
 //*****************************************************************************
@@ -1433,7 +1413,7 @@ void TurnOffLED(uint32_t LEDNum) {
 // desiredButtonState: One of three values, LEFT_BUTTON, RIGHT_BUTTON or ALL_BUTTONS.
 //
 //*****************************************************************************
-void WaitForButtonPress(uint8_t desiredButtonState) {
+bool WaitForButtonPress(uint8_t desiredButtonState) {
 	uint8_t actualButtonState;
 	uint8_t rawButtonState;
 	uint8_t *pRawButtonState = &rawButtonState;
@@ -1444,25 +1424,32 @@ void WaitForButtonPress(uint8_t desiredButtonState) {
 	// Get the state of the buttons.
 	actualButtonState = ButtonsPoll(pDelta, pRawButtonState);
 
-	if (desiredButtonState == LEFT_BUTTON) {
-		while (actualButtonState != LEFT_BUTTON) {
-			actualButtonState = ButtonsPoll(pDelta,
-					pRawButtonState) & LEFT_BUTTON;
-		}
-		return;
-	} else if (desiredButtonState == RIGHT_BUTTON) {
-		while (actualButtonState != RIGHT_BUTTON) {
-			actualButtonState = ButtonsPoll(pDelta,
-					pRawButtonState) & RIGHT_BUTTON;
-		}
-		return;
-	} else if (desiredButtonState == ALL_BUTTONS) {
-		while (actualButtonState != ALL_BUTTONS) {
-			actualButtonState = ButtonsPoll(pDelta,
-					pRawButtonState) & ALL_BUTTONS;
-		}
-		return;
+	switch (desiredButtonState)
+	{
+	case LEFT_BUTTON:
+	{
+		if (actualButtonState == LEFT_BUTTON)
+			return true;
+
+		break;
 	}
+	case RIGHT_BUTTON:
+	{
+		if (actualButtonState == RIGHT_BUTTON)
+			return true;
+
+		break;
+	}
+	case ALL_BUTTONS:
+	{
+		if (actualButtonState == ALL_BUTTONS)
+			return true;
+
+		break;
+	}
+	}
+
+	return false;
 }
 
 //*****************************************************************************
@@ -1987,7 +1974,7 @@ void ProcessRadio(void) {
 			if ((g_sRxPack.sControlPacket.payloadRelease == 1)
 					&& (!sStatus.bPayDeploying)) {
 				sStatus.bPayDeploying = true;
-				ActivateSolenoids();
+				DeployPayload();
 			}
 
 		break;
@@ -2009,6 +1996,27 @@ void ProcessRadio(void) {
 		sStatus.bTargetSet = false;
 
 		break;
+	}
+	case 'A':
+	{
+		//
+		// Arm the system.
+		// This is equivalent to pushing the button on the microcontroller.
+		sStatus.bArmed = true;
+
+		break;
+	}
+	case 'D':
+	{
+		//
+		// Disarm the system.
+		//
+		// Disable the update trajectory and shut off all motors.
+		sStatus.bArmed = false;
+
+		//
+		// TODO: First must disable the motors and stuff, in case they are running.
+		WaitForArming();
 	}
 	}
 
@@ -2080,57 +2088,6 @@ int ProcessUltraSonic(uint32_t SysClockSpeed) {
 #endif
 
 	return distance;
-}
-
-//*****************************************************************************
-//
-// This function will drive the solenoid enable pins to a high state.
-//
-//*****************************************************************************
-void ActivateSolenoids(void) {
-	//
-	// Drive the solenoid pins to a high value.
-	GPIOPinWrite(SOLENOID_GPIO_PORT1, SOLENOID_PIN_1, SOLENOID_PIN_1);
-	GPIOPinWrite(SOLENOID_GPIO_PORT2, SOLENOID_PIN_2, SOLENOID_PIN_2);
-
-	//
-	// Turn on USER LED 2 to signal payload deployment.
-	TurnOnLED(2);
-
-	//
-	// Enable timer 4, so that the pins will be turned off shortly.
-	TimerEnable(SOLENOID_TIMER, TIMER_A);
-
-#if DEBUG
-	UARTprintf("Deploying payload...\r\n");
-#endif
-}
-
-//*****************************************************************************
-//
-// This function will drive the solenoid enable pins to a low state. This
-// function should only be called by the timer 4 interrupt.
-//
-//*****************************************************************************
-void DeactivateSolenoids(void) {
-	//
-	// Drive the solenoid pins to a high value.
-	GPIOPinWrite(SOLENOID_GPIO_PORT1, SOLENOID_PIN_1, 0x00);
-	GPIOPinWrite(SOLENOID_GPIO_PORT2, SOLENOID_PIN_2, 0x00);
-
-	//
-	// Turn off USER LED 2.
-	TurnOffLED(2);
-
-#if DEBUG
-	UARTprintf("Payload Deployed!\r\n");
-#endif
-
-	//
-	// Update system status.
-	sStatus.bPayDeploying = false;
-	sStatus.bPayDeployed = true;
-	sStatus.fMass = 11;
 }
 
 //*****************************************************************************
@@ -2373,6 +2330,41 @@ void ProcessBME280(void) {
 	//
 	// Calculate pressure in float form (Pascals).
 	g_fPressure = presInt / 256.0f;
+}
+
+//*****************************************************************************
+//
+// Deploy payload function will update the position of the servo motors in
+// order to release the payload.
+//
+//*****************************************************************************
+void DeployPayload(void)
+{
+	//
+	// Move the servos to the open position.
+    g_ui32ServoAngle = g_ui32ServoEndPosition;
+
+	PWMPulseWidthSet(PWM0_BASE, SERVO_1, g_ui32ServoAngle);
+	PWMPulseWidthSet(PWM0_BASE, SERVO_2, g_ui32ServoAngle);
+
+#if DEBUG
+	UARTprintf("Payload Deployed\r\n");
+#endif
+
+}
+
+//*****************************************************************************
+//
+// This function will wait for the arm trigger from either the left button
+// press or the signal from the radio indicating an arm sequence.
+//
+//*****************************************************************************
+void WaitForArming(void)
+{
+	while (!sStatus.bArmed) {
+		if (WaitForButtonPress(LEFT_BUTTON))
+				sStatus.bArmed = true;
+	}
 }
 
 //*****************************************************************************

@@ -64,7 +64,6 @@ extern void Timer3AInterrupt(void);
 extern void Timer3BInterrupt(void);
 extern void Timer1AInterrupt(void);
 extern void Timer1BInterrupt(void);
-extern void SolenoidInterrupt(void);
 extern void BMI160IntHandler(void);
 extern void BME280IntHandler(void);
 extern void SendPacket(void);
@@ -561,37 +560,6 @@ void InitUltraSonicSensor(void) {
 #if DEBUG
 	UARTprintf("Done!\n\r");
 #endif
-}
-
-/*
- * Initializations for Solenoid Enable Pins
- */
-void InitSolenoidEnablePins(void) {
-	//
-	// Enable the peripheral used by the Solenoid Enable pins.
-	SysCtlPeripheralEnable(SOLENOID_PERIPH1);
-	SysCtlPeripheralEnable(SOLENOID_PERIPH2);
-
-	//
-	// Configure the GPIO pins as output pins.
-	GPIOPinTypeGPIOOutput(SOLENOID_GPIO_PORT1, SOLENOID_PIN_1);
-	GPIOPinTypeGPIOOutput(SOLENOID_GPIO_PORT2, SOLENOID_PIN_2);
-
-	//
-	// Enable the peripheral to be used by the timer.
-	SysCtlPeripheralEnable(SOLENOID_TIMER_PERIPH);
-
-	//
-	// Configure the timer to run for 5 seconds.
-	TimerConfigure(SOLENOID_TIMER, TIMER_CFG_ONE_SHOT);
-	TimerLoadSet(SOLENOID_TIMER, TIMER_A, SYSCLOCKSPEED * 5);
-
-	//
-	// Configure the interrupts for the timer.
-	TimerIntClear(SOLENOID_TIMER, TIMER_TIMA_TIMEOUT);
-	TimerIntEnable(SOLENOID_TIMER, TIMER_TIMA_TIMEOUT);
-	IntEnable(SOLENOID_INT);
-	TimerIntRegister(SOLENOID_TIMER, TIMER_A, SolenoidInterrupt);
 }
 
 /*
