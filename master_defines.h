@@ -11,7 +11,7 @@
 #ifndef MASTER_DEFINES_H_
 #define MASTER_DEFINES_H_
 
-#define DEBUG true
+#define DEBUG false
 
 #define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false

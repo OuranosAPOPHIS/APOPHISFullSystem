@@ -352,7 +352,7 @@ void InitBMI160(uint32_t I2C_base, uint8_t AccelRate, uint8_t AccelAccuracy, uin
 
     //
     // Now get the offset values from the device for proper calibration.
-    I2CRead(I2C_base, BMI160_ADDRESS, BMI160_OFFSET, BMI160_OFFSET_SIZE, offsetValues);
+ //   I2CRead(I2C_base, BMI160_ADDRESS, BMI160_OFFSET, BMI160_OFFSET_SIZE, offsetValues);
 
 #if DEBUG
     //

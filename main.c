@@ -445,6 +445,32 @@ int main(void) {
 	ButtonsInit();
 
 	//
+	// Initialize the payload deployment pins if turned on.
+#if PAYLOAD_DEPLOY
+	//
+	// Initialize the air motors.
+	ui32ServoSpeed = InitServoMtrs();
+
+	//
+	// Calculate zero position corresponding to a 2.5% duty cycle.
+	g_ui32ServoStartPosition = (uint32_t)(	ui32ServoSpeed * 0.025);
+
+	//
+	// Calculate end position corresponding to a 12.5% duty cycle.
+	g_ui32ServoEndPosition = g_ui32ServoStartPosition * 5;
+
+	//
+	// Initialize the angle of the system to the starting position.
+	g_ui32ServoAngle = g_ui32ServoStartPosition;
+	PWMGenEnable(PWM0_BASE, PWM_GEN_3);
+#endif
+
+	//
+	// Wait to finish boot up process.
+	while (!WaitForButtonPress(RIGHT_BUTTON))
+		{ ;;; }
+
+	//
 	// Initialize the Console if debug mode is on.
 #if DEBUG
 	InitConsole();
@@ -484,27 +510,6 @@ int main(void) {
 	// Initialize the ultrasonic sensors if turned on.
 #if ULTRASONIC_ACTIVATED
 	InitUltraSonicSensor();
-#endif
-
-	//
-	// Initialize the payload deployment pins if turned on.
-#if PAYLOAD_DEPLOY
-	//
-	// Initialize the air motors.
-	ui32ServoSpeed = InitServoMtrs();
-
-	//
-	// Calculate zero position corresponding to a 2.5% duty cycle.
-	g_ui32ServoStartPosition = (uint32_t)(	ui32ServoSpeed * 0.025);
-
-	//
-	// Calculate end position corresponding to a 12.5% duty cycle.
-	g_ui32ServoEndPosition = g_ui32ServoStartPosition * 5;
-
-	//
-	// Initialize the angle of the system to the starting position.
-	g_ui32ServoAngle = g_ui32ServoStartPosition;
-	PWMGenEnable(PWM0_BASE, PWM_GEN_3);
 #endif
 
 	//
@@ -705,7 +710,7 @@ int main(void) {
 
 	//
 	// Program start.
-	while (!g_Quit) {
+	while (true) {
 		//
 		// First check for commands from Console.
 		if (g_ConsoleFlag)
@@ -747,12 +752,13 @@ int main(void) {
 	// Program ending. Do any clean up that's needed.
 	UARTprintf("Goodbye!\r\n");
 #endif
-
+#if false
 	TurnOffLED(5);
 
 	IntMasterDisable();
-
 	return 0;
+#endif
+
 }
 
 /*
@@ -825,8 +831,6 @@ void ConsoleIntHandler(void) {
 //
 //*****************************************************************************
 void RadioIntHandler(void) {
-
-	// TODO: wtf magic!?
 
 	static uint8_t ui8Index = 0;
 	static uint8_t ui8Magic[4] = { 0 };
@@ -2018,6 +2022,17 @@ void ProcessRadio(void) {
 				// Get the wheel throttles. They will be sent as percentages from -100 to 100.
 				g_ui32RWThrottle = (g_sRxPack.sControlPacket.throttle);
 				g_ui32LWThrottle = (g_sRxPack.sControlPacket.throttle2);
+
+				//
+				// Check to make sure neither throttle exceeds 100 or -100.
+				if (g_ui32RWThrottle > 100)
+					g_ui32RWThrottle = 100;
+				if (g_ui32RWThrottle < -100)
+					g_ui32RWThrottle = -100;
+				if (g_ui32LWThrottle > 100)
+					g_ui32LWThrottle = 100;
+				if (g_ui32LWThrottle < -100)
+					g_ui32LWThrottle = -100;
 			}
 			//
 			// Check if we should deploy the payload.
@@ -2958,17 +2973,6 @@ void ManualDriveUpdate(void) {
 	TimerIntClear(UPDATE_TIMER, ui32Status);
 
 	uint8_t txBuffer[4];
-
-	//
-	// Check to make sure neither throttle exceeds 100.
-	if (g_ui32RWThrottle > 100)
-		g_ui32RWThrottle = 100;
-	if (g_ui32RWThrottle < -100)
-		g_ui32RWThrottle = -100;
-	if (g_ui32LWThrottle > 100)
-		g_ui32LWThrottle = 100;
-	if (g_ui32LWThrottle < -100)
-		g_ui32LWThrottle = -100;
 
 	//
 	// Check the direction. For the LW, CCW is the forward direction.

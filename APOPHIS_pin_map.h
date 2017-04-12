@@ -134,6 +134,9 @@
 #define GNDMTR2_UART UART7_BASE
 #define GNDMTR2_INT INT_UART7
 
+#define GNDMTR_TIMER_PORT GPIO_PORTA_BASE
+#define GNDMTR_TIMER TIMER1_BASE
+
 /*
  * Radio Timer Defines
  * Timer 5 - Timer A will be used
@@ -204,8 +207,6 @@
  *      Capture 2 - Timer2 TimerB
  *      Capture 3 - Timer3 TimerA
  *      Capture 4 - Timer3 TimerB
- *      Capture 5 - Timer1 TimerB
- *      Capture 6 - Timer1 TimerA
  */
 
 #define USONIC_TRIG_PERIPH SYSCTL_PERIPH_GPIOL

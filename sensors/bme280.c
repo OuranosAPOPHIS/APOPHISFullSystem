@@ -35,7 +35,9 @@
 void InitBME280(uint32_t I2C_base, int8_t *offsetValues)
 {
     uint8_t txBuffer[2] = {0};
+#if DEBUG
     uint8_t state[2];
+#endif
 
     //
     // Reset the device.
@@ -84,7 +86,7 @@ void InitBME280(uint32_t I2C_base, int8_t *offsetValues)
 
     //
     // Get the offset values from the sensor.
-    I2CRead(I2C_base, BME280_DEVICE_ADDRESS, BME280_COMP_VALUES, 12, offsetValues);
+    //I2CRead(I2C_base, BME280_DEVICE_ADDRESS, BME280_COMP_VALUES, 12, offsetValues);
 }
 
 /*

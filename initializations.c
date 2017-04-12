@@ -295,6 +295,10 @@ void InitGndMotors(void) {
 	SysCtlPeripheralEnable(GNDMTR2_GPIO_PERIPH);
 
 	//
+	// Enable the timer for pulling low the comm pin.
+	//SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
+
+	//
 	// Enable the direction pins for the RS485 converter.
 	SysCtlPeripheralEnable(GNDMTR1_GPIO_DIRECTION_PERIPH);
 	SysCtlPeripheralEnable(GNDMTR2_GPIO_DIRECTION_PERIPH);
@@ -329,6 +333,8 @@ void InitGndMotors(void) {
 	UARTConfigSetExpClk(GNDMTR2_UART, SYSCLOCKSPEED, 57600,
 			(UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
 			UART_CONFIG_PAR_NONE));
+
+	//TimerLoadSet(120000000 / 500 / 3)
 
 	//
 	// Configure both ground motors.
@@ -430,7 +436,6 @@ void InitUltraSonicSensor(void) {
 
 	//
 	// Enable the peripheral used by timers 1, 2 and 3.
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER2);
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER3);
 

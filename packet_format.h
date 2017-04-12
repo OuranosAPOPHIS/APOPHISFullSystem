@@ -61,7 +61,7 @@ struct upacket {
  */
 typedef union {
     struct upacket pack;    // Structure as defined above.
-    char str[84]; // character addressing of same memory.
+    char str[90]; // character addressing of same memory.
 } uTxPack;
 
 /*
@@ -100,7 +100,7 @@ typedef struct  {
 typedef union {
     tGSTPacket sTargetPacket;   // Structure as defined above.
     tGSCPacket sControlPacket;   // Structure as defined above.
-    char ui8Data[1];
+    char ui8Data[4];
     char ui8DataTarget[sizeof(tGSTPacket)];  // Same memory byte addressable.
     char ui8DataControl[sizeof(tGSCPacket)];  // Same memory byte addressable.
 } uRxPack;
