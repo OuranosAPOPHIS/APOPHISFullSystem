@@ -46,7 +46,7 @@
 #include "sensors/bmi160.h"
 #include "sensors/i2c_driver.h"
 #include "sensors/bme280.h"
-#include "sensors/accel_gyro_cal_data.h"
+#include "sensors/accel_gyro_cal_data2.h"
 
 #include "motors/gnd_mtrs.h"
 
@@ -68,7 +68,7 @@
 
 //
 // Throttle limits for the aerial motors.
-#define ZEROTHROTTLE 2239
+#define ZEROTHROTTLE 2204
 #define MAXTHROTTLE 4000
 
 #if IMU_ACTIVATED
@@ -445,6 +445,41 @@ int main(void) {
 	ButtonsInit();
 
 	//
+	// Initialize the system state.
+    sStatus.bMode = false;
+    sStatus.bPayDeployed = false;
+    sStatus.bRadioConnected = false;
+    sStatus.bTargetSet = false;
+    sStatus.fMass = 16;
+    sStatus.bArmed = false;
+
+    //
+    // Initialize the sensor states.
+    sSensStatus.fPrevVelX = 0;
+    sSensStatus.fPrevVelY = 0;
+    sSensStatus.fPrevVelZ = 0;
+    sSensStatus.fPrevPosX = 0;
+    sSensStatus.fPrevPosY = 0;
+    sSensStatus.fPrevPosZ = 0;
+    sSensStatus.fThrust = 0;
+
+    //
+    // Initialize the throttle of the system.
+    sThrottle.fAirMtr1Throttle = ZEROTHROTTLE;
+    sThrottle.fAirMtr2Throttle = ZEROTHROTTLE;
+    sThrottle.fAirMtr3Throttle = ZEROTHROTTLE;
+    sThrottle.fAirMtr4Throttle = ZEROTHROTTLE;
+
+    sThrottle.ui16GndMtrRWThrottle = 0x0000;
+    sThrottle.ui16GndMtrLWThrottle = 0x0000;
+
+    //
+    // Set the magic packets.
+    g_Pack.pack.Magic[0] = 0xFF;
+    g_Pack.pack.Magic[1] = 0xFF;
+    g_Pack.pack.Magic[2] = 0xFF;
+
+	//
 	// Initialize the payload deployment pins if turned on.
 #if PAYLOAD_DEPLOY
 	//
@@ -595,6 +630,13 @@ int main(void) {
 #endif
 #endif
 
+#if IMU_ACTIVATED
+    //
+    // Initialize the DCM.
+    CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.2f, 0.6f, 0.2f);
+    g_bDCMStarted = false;
+#endif
+
 	//
 	// Initialize the state of the system.
 #if	GNDMTRS_ACTIVATED
@@ -612,49 +654,16 @@ int main(void) {
 	}
 #endif
 
+#if (RADIO_ACTIVATED)
+    //
+    // Activate the radio timers.
+    TimerEnable(RADIO_TIMER, TIMER_A);
+    TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
+#endif
+
 	//
 	// Turn on the trajectory timer.
 	InitTrajectoryTimer();
-
-	sStatus.bMode = false;
-	sStatus.bPayDeployed = false;
-	sStatus.bRadioConnected = false;
-	sStatus.bTargetSet = false;
-	sStatus.fMass = 16;
-	sStatus.bArmed = false;
-
-	//
-	// Initialize the sensor states.
-	sSensStatus.fPrevVelX = 0;
-	sSensStatus.fPrevVelY = 0;
-	sSensStatus.fPrevVelZ = 0;
-	sSensStatus.fPrevPosX = 0;
-	sSensStatus.fPrevPosY = 0;
-	sSensStatus.fPrevPosZ = 0;
-	sSensStatus.fThrust = 0;
-
-	//
-	// Initialize the throttle of the system.
-	sThrottle.fAirMtr1Throttle = ZEROTHROTTLE;
-	sThrottle.fAirMtr2Throttle = ZEROTHROTTLE;
-	sThrottle.fAirMtr3Throttle = ZEROTHROTTLE;
-	sThrottle.fAirMtr4Throttle = ZEROTHROTTLE;
-
-	sThrottle.ui16GndMtrRWThrottle = 0x0000;
-	sThrottle.ui16GndMtrLWThrottle = 0x0000;
-
-	//
-	// Set the magic packets.
-	g_Pack.pack.Magic[0] = 0xFF;
-	g_Pack.pack.Magic[1] = 0xFF;
-	g_Pack.pack.Magic[2] = 0xFF;
-
-#if (RADIO_ACTIVATED)
-	//
-	// Activate the radio timers.
-	TimerEnable(RADIO_TIMER, TIMER_A);
-	TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
-#endif
 
 	//
 	// Initialization complete. Enable interrupts.
@@ -673,36 +682,12 @@ int main(void) {
 
 	TurnOffLED(5);
 
-#if IMU_ACTIVATED
-	//
-	// Initialize the DCM.
-	CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.2f, 0.6f, 0.2f);
-	g_bDCMStarted = false;
-#endif
-
 	//
 	// Turn off LED1, and enable the systick at 12 Hz to
 	// blink LED 4, signifying regular operation.
 	// The Systick cannot handle any value larger than 16MHz.
 	TurnOffLED(1);
 	SysTickPeriodSet(SYSCLOCKSPEED / 12);
-	SysTickEnable();
-
-#if (AIRMTRS_ACTIVATED)
-	//
-	// Activate the motors for APOPHIS.
-	PWMGenEnable(PWM0_BASE, PWM_GEN_0);
-	PWMGenEnable(PWM0_BASE, PWM_GEN_1);
-	PWMGenEnable(PWM0_BASE, PWM_GEN_2);
-
-#endif
-
-
-#if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
-	//
-	// Enable trajectory timer.
-	TimerEnable(UPDATE_TIMER, TIMER_B);
-#endif
 
 	//
 	// Print menu.
@@ -2065,15 +2050,56 @@ void ProcessRadio(void) {
 
 			break;
 		}
-		case 'D': {
-			//
-			// Disarm the system.
+		case 'D': { // Disarm the system.
 			//
 			// Disable the update trajectory and shut off all motors.
 			sStatus.bArmed = false;
 
 			//
-			// TODO: First must disable the motors and stuff, in case they are running.
+			// Turn on all the LEDs to indicate waiting to re-arm.
+			TurnOnLED(5);
+
+		    //
+		    // Set the ground motors to zero throttle.
+		    uint8_t txBuffer[4];
+
+		    // Build the instruction packet.
+		    txBuffer[0] = RX24_WRITE_DATA;
+		    txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+		    txBuffer[2] = 0x00;
+		    txBuffer[3] = 0x00;
+
+		    //
+		    // Send the command to the LW motor.
+		    Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION, 4,
+		            txBuffer);
+
+		    //
+		    // Send the command to the RW motor.
+		    Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
+		            txBuffer);
+
+			//
+		    // Set the air motors to zero throttle and disable the generators.
+		    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
+		    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
+		    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
+		    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
+
+		    PWMGenDisable(PWM0_BASE, PWM_GEN_0);
+		    PWMGenDisable(PWM0_BASE, PWM_GEN_1);
+		    PWMGenDisable(PWM0_BASE, PWM_GEN_2);
+
+		    //
+		    // Disable interrupts except for the radio and sensors.
+		    SysTickDisable();
+
+#if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
+            //
+            // Enable trajectory timer.
+            TimerDisable(UPDATE_TIMER, TIMER_B);
+#endif
+
 			break;
 		}
 		}
@@ -2442,6 +2468,22 @@ void WaitForArming(void)
 
 	//
 	// Arm all of the interrupts here.
+    SysTickEnable();
+
+#if (AIRMTRS_ACTIVATED)
+    //
+    // Activate the motors for APOPHIS.
+    PWMGenEnable(PWM0_BASE, PWM_GEN_0);
+    PWMGenEnable(PWM0_BASE, PWM_GEN_1);
+    PWMGenEnable(PWM0_BASE, PWM_GEN_2);
+
+#endif
+
+#if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
+    //
+    // Enable trajectory timer.
+    TimerEnable(UPDATE_TIMER, TIMER_B);
+#endif
 
 }
 
@@ -2451,15 +2493,15 @@ void WaitForArming(void)
 //
 //*****************************************************************************
 void AutoFlyUpdate(void) {
-	uint32_t ui32Status;
+    uint32_t ui32Status;
 
-	//
-	// Get the interrupt status.
-	ui32Status = TimerIntStatus(UPDATE_TIMER, true);
+    //
+    // Get the interrupt status.
+    ui32Status = TimerIntStatus(UPDATE_TIMER, true);
 
-	//
-	// Clear the interrupt.
-	TimerIntClear(UPDATE_TIMER, ui32Status);
+    //
+    // Clear the interrupt.
+    TimerIntClear(UPDATE_TIMER, ui32Status);
 
 /*
 	float fXdotDes;
@@ -2608,9 +2650,15 @@ void AutoFlyUpdate(void) {
 		// TODO: Add some logic, so that if we lose radio contact, we
 		// don't necessarily crash...
 	} */
+
+	TurnOffLED(5);
+	TurnOnLED(2);
+
+#if DEBUG
 	//
 	// Reset printing loop count for debugging.
 	g_PrintFlag = false;
+#endif
 }
 
 //*****************************************************************************
@@ -2621,15 +2669,15 @@ void AutoFlyUpdate(void) {
 //*****************************************************************************
 void AutoDriveUpdate(void)
 {
-	uint32_t ui32Status;
+    uint32_t ui32Status;
 
-	//
-	// Get the interrupt status.
-	ui32Status = TimerIntStatus(UPDATE_TIMER, true);
+    //
+    // Get the interrupt status.
+    ui32Status = TimerIntStatus(UPDATE_TIMER, true);
 
-	//
-	// Clear the interrupt.
-	TimerIntClear(UPDATE_TIMER, ui32Status);
+    //
+    // Clear the interrupt.
+    TimerIntClear(UPDATE_TIMER, ui32Status);
 
 	//
 	// TODO: This is where the control law and stuff will go.
@@ -2692,8 +2740,34 @@ void AutoDriveUpdate(void)
 	*/
 
 	//
+	// Set the ground motors to zero throttle.
+	//
+	uint8_t txBuffer[4];
+
+    // Build the instruction packet.
+    txBuffer[0] = RX24_WRITE_DATA;
+    txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+    txBuffer[2] = 0x00;
+    txBuffer[3] = 0x00;
+
+    //
+    // Send the command to the LW motor.
+    Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION, 4,
+            txBuffer);
+
+    //
+    // Send the command to the RW motor.
+    Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
+            txBuffer);
+
+    TurnOffLED(5);
+    TurnOnLED(3);
+
+#if DEBUG
+	//
 	// Reset printing loop count for debugging.
 	g_PrintFlag = false;
+#endif
 }
 
 //*****************************************************************************
@@ -2942,6 +3016,9 @@ void ManualFlyUpdate(void)
 			}
 		}
 	} */
+
+	TurnOffLED(5);
+	TurnOnLED(4);
 
 	//
 	// Set the new throttles for the motors.
