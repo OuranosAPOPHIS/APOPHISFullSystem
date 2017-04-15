@@ -2,7 +2,7 @@
  * Project: Aerial Platform for Overland Haul and Import System (APOPHIS)
  *
  *  Created On: Jan 20, 2017
- *  Last Updated: April 3, 2017
+ *  Last Updated: April 14, 2017
  *      Author(s): Brandon Klefman
  *
  *      Purpose: Flight computer for the APOPHIS platform.
@@ -46,10 +46,18 @@
 #include "sensors/bmi160.h"
 #include "sensors/i2c_driver.h"
 #include "sensors/bme280.h"
+
+//
+// Sensor-Boosterpack Calibration data.
+#if BOOSTERPACK1
+#include "sensors/accel_gyro_cal_data1.h"
+#elif BOOSTERPACK2
 #include "sensors/accel_gyro_cal_data2.h"
+#elif BOOSTERPACK3
+#include "sensors/accel_gyro_cal_data3.h"
+#endif
 
 #include "motors/gnd_mtrs.h"
-
 
 //*****************************************************************************
 //
@@ -69,7 +77,7 @@
 //
 // Throttle limits for the aerial motors.
 #define ZEROTHROTTLE 2204
-#define MAXTHROTTLE 4000
+#define MAXTHROTTLE 3500
 
 #if IMU_ACTIVATED
 #define STABBIAS true
@@ -488,7 +496,7 @@ int main(void) {
 
 	//
 	// Calculate zero position corresponding to a 2.5% duty cycle.
-	g_ui32ServoStartPosition = (uint32_t)(	ui32ServoSpeed * 0.025);
+	g_ui32ServoStartPosition = (uint32_t)(ui32ServoSpeed * 0.025);
 
 	//
 	// Calculate end position corresponding to a 12.5% duty cycle.
@@ -500,64 +508,138 @@ int main(void) {
 	PWMGenEnable(PWM0_BASE, PWM_GEN_3);
 #endif
 
-	//
-	// Wait to finish boot up process.
-	while (!WaitForButtonPress(RIGHT_BUTTON))
-		{ ;;; }
-
-	//
-	// Initialize the Console if debug mode is on.
+    //
+    // Initialize the Console if debug mode is on.
 #if DEBUG
-	InitConsole();
+    InitConsole();
+    UARTprintf("Clock speed: %d\r\n", SYSCLOCKSPEED);
 #endif
 
-#if DEBUG
-	UARTprintf("Clock speed: %d\r\n", SYSCLOCKSPEED);
-#endif
-
-	//
-	// Initialize the radio if turned on.
-#if RADIO_ACTIVATED
-	InitRadio();
-#endif
-
-	//
-	// Initialize the GPS if turned on.
+    //
+    // Initialize the GPS if turned on.
 #if GPS_ACTIVATED
-	InitGPS();
+    InitGPS();
 #endif
+
+    //
+    // Initialize the solar panels if turned on.
+#if SECONDARY_ATTITUDE
+    InitSolarPanels();
+
+    InitSecondaryAccel();
+#endif
+
+    //
+    // Initialize the ultrasonic sensors if turned on.
+#if ULTRASONIC_ACTIVATED
+    InitUltraSonicSensor();
+#endif
+
+    //
+    // Initialize the pressure sensor if enabled.
+#if ALTIMETER_ACTIVATED
+    //
+    // Initialize the altimeter.
+    InitAltimeter(g_BME280OffsetValues);
+
+    //
+    // Set the offset values.
+    g_BME280OffsetUnsigned[0] = g_BME280OffsetValues[0];
+    g_BME280OffsetUnsigned[1] = g_BME280OffsetValues[3];
+#endif
+
+   //
+   // Initialize the BMI160 IMU if enabled.
+#if IMU_ACTIVATED
+   InitIMU(g_offsetData);
+
+#if STABBIAS
+   //
+   // Calculate the gyro bias.
+   while (numCalcs < 50) {
+       uint8_t status;
+       uint8_t IMUData[6] = { 0 };
+       int16_t i16GyroData[3];
+       float fGyroDataUnCal[3];
+
+       //
+       // First check the status for which data is ready.
+       I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
+
+       //
+       // Check what status returned.
+       if ((status & 0xC0) == (BMI160_GYR_RDY | BMI160_ACC_RDY)) {
+           //
+           // Then get the data for the gyro.
+           I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 6, IMUData);
+
+           //
+           // Set the gyro data.
+           i16GyroData[0] = (((int16_t) IMUData[1] << 8) + (int8_t) IMUData[0]);
+           i16GyroData[1] = (((int16_t) IMUData[3] << 8) + (int8_t) IMUData[2]);
+           i16GyroData[2] = (((int16_t) IMUData[5] << 8) + (int8_t) IMUData[4]);
+
+           //
+           // Convert gyro data to float.
+           fGyroDataUnCal[0] = (((float) (i16GyroData[0])) / GYROLSB) - BGX;
+           fGyroDataUnCal[1] = (((float) (i16GyroData[1])) / GYROLSB) - BGY;
+           fGyroDataUnCal[2] = (((float) (i16GyroData[2])) / GYROLSB) - BGZ;
+
+           //
+           // Calculate the calibrated gyro data.
+           fbias[0][numCalcs] = fGyroDataUnCal[0] * SGX + fGyroDataUnCal[1] * MGXY + fGyroDataUnCal[2] * MGXZ;
+           fbias[1][numCalcs] = fGyroDataUnCal[0] * MGYX + fGyroDataUnCal[1] * SGY + fGyroDataUnCal[2] * MGYZ;
+           fbias[2][numCalcs] = fGyroDataUnCal[0] * MGZX + fGyroDataUnCal[1] * MGZY + fGyroDataUnCal[2] * SGZ;
+
+           numCalcs++;
+       }
+   }
+
+   //
+   // Calculate the bias.
+   for (index = 0; index < numCalcs; index++)
+       for (j = 0; j < 3; j++)
+           fSum[j] += fbias[j][index];
+
+   for (index = 0; index < 3; index++)
+       g_GyroStabBias[index] = fSum[index] / numCalcs;
+#endif
+
+   //
+   // Initialize the DCM.
+   CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.2f, 0.6f, 0.2f);
+   g_bDCMStarted = false;
+#endif
+
+   //
+   // Initialize the timer for the update trajectory.
+   InitTrajectoryTimer();
+
+   //
+   // Initialize the radio if turned on.
+#if RADIO_ACTIVATED
+   InitRadio();
+
+   //
+   // Activate the radio timers.
+   TimerEnable(RADIO_TIMER, TIMER_A);
+   TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
+#endif
+
+   //
+   // Turn on interrupts so the sensors and radio can start working.
+   IntMasterEnable();
+
+   //
+   // All sensors are activated...
+   // Wait to finish boot up process before initializing any motors.
+   while (!WaitForButtonPress(RIGHT_BUTTON))
+       { ;;; }
 
 	//
 	// Initialize the ground motors if turned on.
 #if GNDMTRS_ACTIVATED
 	InitGndMotors();
-#endif
-
-	//
-	// Initialize the solar panels if turned on.
-#if SECONDARY_ATTITUDE
-	InitSolarPanels();
-
-	InitSecondaryAccel();
-#endif
-
-	//
-	// Initialize the ultrasonic sensors if turned on.
-#if ULTRASONIC_ACTIVATED
-	InitUltraSonicSensor();
-#endif
-
-	//
-	// Initialize the pressure sensor if enabled.
-#if ALTIMETER_ACTIVATED
-	//
-	// Initialize the altimeter.
-	InitAltimeter(g_BME280OffsetValues);
-
-	//
-	// Set the offset values.
-	g_BME280OffsetUnsigned[0] = g_BME280OffsetValues[0];
-	g_BME280OffsetUnsigned[1] = g_BME280OffsetValues[3];
 #endif
 
 	//
@@ -569,76 +651,11 @@ int main(void) {
 
 	//
 	// Calculate a throttle increment.
-	g_ui32ThrottleIncrement = (MAXTHROTTLE - ZEROTHROTTLE) / 200;
+	g_ui32ThrottleIncrement = (MAXTHROTTLE - ZEROTHROTTLE) / 100;
 #endif
 
 	//
-	// Initialize the BMI160 IMU if enabled.
-#if IMU_ACTIVATED
-	InitIMU(g_offsetData);
-
-#if STABBIAS
-	//
-	// Calculate the gyro bias.
-	while (numCalcs < 50) {
-		uint8_t status;
-		uint8_t IMUData[6] = { 0 };
-		int16_t i16GyroData[3];
-		float fGyroDataUnCal[3];
-
-		//
-		// First check the status for which data is ready.
-		I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_STATUS, 1, &status);
-
-		//
-		// Check what status returned.
-		if ((status & 0xC0) == (BMI160_GYR_RDY | BMI160_ACC_RDY)) {
-			//
-			// Then get the data for the gyro.
-			I2CRead(BOOST_I2C, BMI160_ADDRESS, BMI160_GYRO_X, 6, IMUData);
-
-			//
-			// Set the gyro data.
-			i16GyroData[0] = (((int16_t) IMUData[1] << 8) + (int8_t) IMUData[0]);
-			i16GyroData[1] = (((int16_t) IMUData[3] << 8) + (int8_t) IMUData[2]);
-			i16GyroData[2] = (((int16_t) IMUData[5] << 8) + (int8_t) IMUData[4]);
-
-			//
-			// Convert gyro data to float.
-			fGyroDataUnCal[0] = (((float) (i16GyroData[0])) / GYROLSB) - BGX;
-			fGyroDataUnCal[1] = (((float) (i16GyroData[1])) / GYROLSB) - BGY;
-			fGyroDataUnCal[2] = (((float) (i16GyroData[2])) / GYROLSB) - BGZ;
-
-			//
-			// Calculate the calibrated gyro data.
-			fbias[0][numCalcs] = fGyroDataUnCal[0] * SGX + fGyroDataUnCal[1] * MGXY + fGyroDataUnCal[2] * MGXZ;
-			fbias[1][numCalcs] = fGyroDataUnCal[0] * MGYX + fGyroDataUnCal[1] * SGY + fGyroDataUnCal[2] * MGYZ;
-			fbias[2][numCalcs] = fGyroDataUnCal[0] * MGZX + fGyroDataUnCal[1] * MGZY + fGyroDataUnCal[2] * SGZ;
-
-			numCalcs++;
-		}
-	}
-
-	//
-	// Calculate the bias.
-	for (index = 0; index < numCalcs; index++)
-		for (j = 0; j < 3; j++)
-			fSum[j] += fbias[j][index];
-
-	for (index = 0; index < 3; index++)
-		g_GyroStabBias[index] = fSum[index] / numCalcs;
-#endif
-#endif
-
-#if IMU_ACTIVATED
-    //
-    // Initialize the DCM.
-    CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.2f, 0.6f, 0.2f);
-    g_bDCMStarted = false;
-#endif
-
-	//
-	// Initialize the state of the system.
+	// Initialize more system states based on motor information.
 #if	GNDMTRS_ACTIVATED
 	sStatus.bFlyOrDrive = false;
 #else
@@ -646,28 +663,11 @@ int main(void) {
 #endif
 
 #if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
-	if (sStatus.bFlyOrDrive) {
+	if (sStatus.bFlyOrDrive)
 		TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualFlyUpdate);
-	}
-	else {
+	else
 		TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
-	}
 #endif
-
-#if (RADIO_ACTIVATED)
-    //
-    // Activate the radio timers.
-    TimerEnable(RADIO_TIMER, TIMER_A);
-    TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
-#endif
-
-	//
-	// Turn on the trajectory timer.
-	InitTrajectoryTimer();
-
-	//
-	// Initialization complete. Enable interrupts.
-	IntMasterEnable();
 
 #if DEBUG
 	//
@@ -695,7 +695,7 @@ int main(void) {
 
 	//
 	// Program start.
-	while (true) {
+	while (g_Quit) {
 		//
 		// First check for commands from Console.
 		if (g_ConsoleFlag)
@@ -737,13 +737,50 @@ int main(void) {
 	// Program ending. Do any clean up that's needed.
 	UARTprintf("Goodbye!\r\n");
 #endif
-#if false
+
+	//
+	// Disarm system and disable all motors.
+    IntMasterDisable();
+
+    //
+    // Set the ground motors to zero throttle.
+    uint8_t txBuffer[4];
+
+    // Build the instruction packet.
+    txBuffer[0] = RX24_WRITE_DATA;
+    txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+    txBuffer[2] = 0x00;
+    txBuffer[3] = 0x00;
+
+    //
+    // Send the command to the LW motor.
+    Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION, 4,
+            txBuffer);
+
+    //
+    // Send the command to the RW motor.
+    Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
+            txBuffer);
+
+    //
+    // Set the air motors to zero throttle and disable the generators.
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
+    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
+
+    PWMGenDisable(PWM0_BASE, PWM_GEN_0);
+    PWMGenDisable(PWM0_BASE, PWM_GEN_1);
+    PWMGenDisable(PWM0_BASE, PWM_GEN_2);
+
+    //
+    // Turn off all LEDs except for the first and fourth
+    // to indicate program completion.
 	TurnOffLED(5);
+	TurnOnLED(1);
+	TurnOnLED(4);
 
-	IntMasterDisable();
 	return 0;
-#endif
-
 }
 
 /*
@@ -751,7 +788,8 @@ int main(void) {
  */
 //*****************************************************************************
 //
-// Interrupt handler for the console communication with the PC.
+// SysTick Interrupt handler. Blinks LED 4 at a constant rate of 1 Hz in order
+// to indicate program operation.
 //
 //*****************************************************************************
 void SysTickIntHandler(void) {
@@ -771,6 +809,7 @@ void SysTickIntHandler(void) {
 			g_LED4On = true;
 		}
 
+#if DEBUG
 		//
 		// Trigger printing accel and gyro data to PC terminal.
 		g_PrintIMUData = true;
@@ -778,6 +817,7 @@ void SysTickIntHandler(void) {
 		//
 		// Trigger printing of the trajectory information.
 		g_PrintFlag = true;
+#endif
 
 		//
 		// Reset SysTick Count.
@@ -800,10 +840,6 @@ void ConsoleIntHandler(void) {
 	//
 	// Get the character sent from the PC.
 	g_CharConsole = UARTCharGetNonBlocking(CONSOLE_UART);
-
-	//
-	// Echo back to Radio.
-	//UARTCharPutNonBlocking(CONSOLE_UART, g_CharConsole);
 
 	//
 	// Trigger the flag for char received from console.
@@ -897,7 +933,7 @@ void GPSIntHandler(void) {
 	UARTIntClear(GPS_UART, ui32Status);
 
 	//
-	// Signal to main() that GPS data is ready to be retreived.
+	// Signal to main() that GPS data is ready to be retrieved.
 	g_GPSFlag = true;
 }
 
@@ -2102,6 +2138,22 @@ void ProcessRadio(void) {
 
 			break;
 		}
+#if DEBUG
+		default:
+		{
+		    //
+		    // Print out some stuff for debugging.
+		    UARTprintf("Radio reached the default case in\r\n");
+		    UARTprintf("the ProcessRadio function.\r\n");
+
+		    while(1)
+		    {
+		        //
+		        // Loop doing nothing, til this problem is solved.
+		    }
+
+		}
+#endif
 		}
 	} else { // Arm the System.
 		switch (g_sRxPack.ui8Data[3]) {
@@ -2189,7 +2241,6 @@ int ProcessUltraSonic(uint32_t SysClockSpeed) {
 //
 //*****************************************************************************
 void SendPacket(void) {
-
 	int n;
 	uint32_t ui32Status;
 
@@ -2432,12 +2483,16 @@ void ProcessBME280(void) {
 //*****************************************************************************
 void DeployPayload(void)
 {
+    IntMasterDisable();
+
 	//
 	// Move the servos to the open position.
     g_ui32ServoAngle = g_ui32ServoEndPosition;
 
 	PWMPulseWidthSet(PWM0_BASE, SERVO_1, g_ui32ServoAngle);
 	PWMPulseWidthSet(PWM0_BASE, SERVO_2, g_ui32ServoAngle);
+
+	IntMasterEnable();
 
 	//
 	// Modify the flag.

@@ -27,7 +27,7 @@
 	<variableList>
 		<variable>
 			<name>SW_ROOT</name>
-			<value>file:/E:/TM4C1294XL/Tiva-C-Series</value>
+			<value>file:/C:/Tivaware/TM4C1294XL</value>
 		</variable>
 	</variableList>
 </projectDescription>

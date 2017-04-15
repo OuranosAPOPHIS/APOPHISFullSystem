@@ -64,6 +64,14 @@ void InitRx24FMotor(uint32_t UART_BASE, uint32_t GPIO_BASE, uint32_t GPIO_PIN)
     txBuffer[2] = RX24_TORQ_EN;
     Rx24FWrite(UART_BASE, GPIO_BASE, GPIO_PIN, 3, txBuffer);
 
+    //
+    // Set the torque limit.
+    txBuffer[0] = RX24_WRITE_DATA;
+    txBuffer[1] = RX24_REG_MAX_TORQUE_LSB;
+    txBuffer[2] = 0xFF;
+    txBuffer[3] = 0x03;
+    Rx24FWrite(UART_BASE, GPIO_BASE, GPIO_PIN, 4, txBuffer);
+
 	//
 	// Turn on the LED.
 	txBuffer[0] = RX24_WRITE_DATA;
