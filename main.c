@@ -2,7 +2,7 @@
  * Project: Aerial Platform for Overland Haul and Import System (APOPHIS)
  *
  *  Created On: Jan 20, 2017
- *  Last Updated: April 14, 2017
+ *  Last Updated: April 16, 2017
  *      Author(s): Brandon Klefman
  *
  *      Purpose: Flight computer for the APOPHIS platform.
@@ -129,6 +129,7 @@ void WaitForArming(void);
 //
 // State of the system structure definition and variable.
 typedef struct {
+	uint8_t ui8Mode;    // Mode of operation. 'D' - drive, 'F' - fly, 'A' - autonomous
 	bool bFlyOrDrive;   // Drive is false, fly is true.
 	bool bMode;         // Autonomous is true, manual is false.
 	bool bPayDeployed;  // True indicates the payload has already been deployed.
@@ -774,10 +775,10 @@ int main(void) {
 //
 //*****************************************************************************
 void SysTickIntHandler(void) {
-
-    if (!sStatus.bMode) { // Manual Mode.
-        if (!sStatus.bFlyOrDrive) { // Manual Driving.
-            uint8_t txBuffer[4];
+	switch (ui8Mode)
+	{
+		case 'D': { // Driving
+		            uint8_t txBuffer[4];
 
             //
             // Check the direction. For the LW, CCW is the forward direction.
@@ -843,10 +844,9 @@ void SysTickIntHandler(void) {
                         g_ui32LWThrottle);
             }
 #endif
-}
-        else { // Manual flying
-
-            float fPitchError, fRollError, fPitchDotDot, fRollDotDot;
+		}
+		case 'F': { // Flying
+			 float fPitchError, fRollError, fPitchDotDot, fRollDotDot;
             float fMx, fMy, fMz, fFz;
             float fKp = 30 * 10;
             float fTh1, fTh2, fTh3, fTh4;
@@ -906,11 +906,9 @@ void SysTickIntHandler(void) {
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.ui32AirMtr2Throttle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.ui32AirMtr3Throttle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.ui32AirMtr4Throttle);
-        }
-    }
-    else { // Operating in autonomous mode.
-        if (!sStatus.bFlyOrDrive) { // Auto driving - just zero out the gnd motors.
-            uint8_t txBuffer[4];
+		}
+		case 'A': { // Autonomous - lost radio connection or something.
+			uint8_t txBuffer[4];
 
             // Build the instruction packet.
             txBuffer[0] = RX24_WRITE_DATA;
@@ -927,9 +925,9 @@ void SysTickIntHandler(void) {
             // Send the command to the RW motor.
             Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION,
                        4, txBuffer);
-        }
-        else { // Auto Flying - again, just zero out the air motors.
 
+			//
+			// Zero out the air motors.
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
@@ -938,6 +936,20 @@ void SysTickIntHandler(void) {
             //
             // A smarter system, would do more than just zero out the throttle, in case
             // the vehicle is currently in the air, it could safely descend to the ground.
+	}
+	
+
+    if (!sStatus.bMode) { // Manual Mode.
+        if (!sStatus.bFlyOrDrive) { // Manual Driving.
+
+}
+        else { // Manual flying
+
+	}
+    }
+    else { // Operating in autonomous mode.
+        if (!sStatus.bFlyOrDrive) { // Auto driving - just zero out the gnd motors.
+            
         }
     }
 
@@ -2145,6 +2157,10 @@ void ProcessRadio(void) {
 		switch (g_sRxPack.ui8Data[3]) {
 		case 'T': {
 			//
+			// Change the status to Autonomous.
+			sStatus.ui8Mode = 'A';
+			
+			//
 			// Change the status of the platform to autonomous.
 			sStatus.bMode = true;
 
@@ -2163,10 +2179,9 @@ void ProcessRadio(void) {
 			// Check if we are flying or driving and update the Status.
 			if (g_sRxPack.sControlPacket.flyordrive == g_sRxPack.sControlPacket.fdConfirm)
 				if (g_sRxPack.sControlPacket.flyordrive == 'D') {
-
 				    //
 				    // Set the system state to driving.
-					sStatus.bFlyOrDrive = false;
+					sStatus.ui8Mode = 'D';
 
 	                //
 	                // Get the wheel throttles. They will be sent as percentages from -100 to 100.
@@ -2188,8 +2203,8 @@ void ProcessRadio(void) {
 
 				    //
 				    // Set the system status to flying.
-				    sStatus.bFlyOrDrive = true;
-
+				    sStatus.ui8Mode = 'F';
+					
 				    //
 				    // Get the throttle for all of the motors.
 				    sThrottle.ui32AirMtrThrottle = g_sRxPack.sControlPacket.throttle;
@@ -2221,6 +2236,7 @@ void ProcessRadio(void) {
 		case '0': {
 			//
 			// Change the mode to autonomous.
+			sStatus.ui8Mode = 'A';
 			sStatus.bMode = true;
 
 			//
