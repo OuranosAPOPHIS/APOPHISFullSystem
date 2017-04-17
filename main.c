@@ -2,7 +2,7 @@
  * Project: Aerial Platform for Overland Haul and Import System (APOPHIS)
  *
  *  Created On: Jan 20, 2017
- *  Last Updated: April 16, 2017
+ *  Last Updated: April 17, 2017
  *      Author(s): Brandon Klefman
  *
  *      Purpose: Flight computer for the APOPHIS platform.
@@ -120,6 +120,11 @@ void WaitForArming(void);
 // Global Variables
 //
 //*****************************************************************************
+
+bool bValidData = false;
+uint8_t ui8Magic[4] = { 0 };
+uint8_t ui8Index = 0;
+uint32_t MaxIndex = 0;
 
 //*****************************************************************************
 //
@@ -847,9 +852,11 @@ void SysTickIntHandler(void) {
 	}
 		case 'F': { // Flying
 #if AIRMTRS_ACTIVATED
-			 float fPitchError, fRollError, fPitchDotDot, fRollDotDot;
+			float fPitchError, fRollError, fPitchDotDot, fRollDotDot;
+			float fPitchDot, fRollDot;
             float fMx, fMy, fMz, fFz;
-            float fKp = 30 * 10;
+            float fKd = 30;
+            float fKp = 10;
             float fTh1, fTh2, fTh3, fTh4;
 
             //
@@ -877,9 +884,14 @@ void SysTickIntHandler(void) {
             fFz = (float)sThrottle.ui32AirMtrThrottle;
 
             //
+            // Desired angular velocity.
+            fPitchDot = fPitchError * fKd;
+            fRollDot = fRollError * fKp;
+
+            //
             // Desired angular accelerations.
-            fPitchDotDot = fPitchError * fKp;
-            fRollDotDot = fRollError * fKp;
+            fPitchDotDot = fPitchDot * fKp;
+            fRollDotDot = fRollDot * fKp;
 
             //
             // Calculate Mx, My for desired thrusts.
@@ -1010,9 +1022,6 @@ void ConsoleIntHandler(void) {
 //*****************************************************************************
 void RadioIntHandler(void)
 {
-	static bool bValidData = false;
-	static uint8_t ui8Magic[4] = { 0 };
-	static uint8_t ui8Index = 0;
 	int32_t i32RxChar;
 
 	//
@@ -1022,6 +1031,9 @@ void RadioIntHandler(void)
 
 	while (UARTCharsAvail(RADIO_UART))
 	{
+		if (ui8Index > MaxIndex)
+			MaxIndex = ui8Index;
+
 		//
 		// Get the character from the Radio.
 		i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
@@ -1062,6 +1074,11 @@ void RadioIntHandler(void)
 				//
 				// Target or Arm/Disarm packet.
 				if (ui8Index < sizeof(g_sRxPack.sTargetPacket)) {
+					if (ui8Index > 40)
+						while(1)
+							{
+								;;;
+							}
 					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
 					ui8Index++;
 				}
@@ -1072,7 +1089,7 @@ void RadioIntHandler(void)
 					ProcessRadio();
 
 					//
-					// Reset the statics.
+					// Reset the globals.
 					ui8Magic[0] = 0;
 					ui8Index = 0;
 					bValidData = false;
@@ -1085,6 +1102,12 @@ void RadioIntHandler(void)
 				//
 				// Control packet.
 				if(ui8Index < sizeof(g_sRxPack.sControlPacket)) {
+					if (ui8Index > 40)
+						while(1)
+							{
+								;;;
+							}
+
 					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
 					ui8Index++;
 				}
@@ -1095,7 +1118,7 @@ void RadioIntHandler(void)
 					ProcessRadio();
 
 					//
-					// Reset the statics.
+					// Reset the globals.
 					ui8Magic[0] = 0;
 					ui8Index = 0;
 					bValidData = false;
