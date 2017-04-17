@@ -130,8 +130,6 @@ void WaitForArming(void);
 // State of the system structure definition and variable.
 typedef struct {
 	uint8_t ui8Mode;    // Mode of operation. 'D' - drive, 'F' - fly, 'A' - autonomous
-	bool bFlyOrDrive;   // Drive is false, fly is true.
-	bool bMode;         // Autonomous is true, manual is false.
 	bool bPayDeployed;  // True indicates the payload has already been deployed.
 	bool bRadioConnected; // True indicates radio is connected.
 	bool bTargetSet;    // True indicates good radio data.
@@ -260,10 +258,6 @@ uTxPack g_Pack;
 //
 // Radio packet to be received from ground station.
 uRxPack g_sRxPack;
-
-//
-// Variable to indicate when Radio data is available.
-bool g_RadioFlag = false;
 
 //*****************************************************************************
 //
@@ -447,7 +441,6 @@ int main(void) {
 
 	//
 	// Initialize the system state.
-    sStatus.bMode = false;
     sStatus.bPayDeployed = false;
     sStatus.bRadioConnected = false;
     sStatus.bTargetSet = false;
@@ -596,6 +589,8 @@ int main(void) {
 
    for (index = 0; index < 3; index++)
        g_GyroStabBias[index] = fSum[index] / numCalcs;
+
+   IntMasterDisable();
 #endif
 
    //
@@ -646,9 +641,11 @@ int main(void) {
 	//
 	// Initialize more system states based on motor information.
 #if	GNDMTRS_ACTIVATED
-	sStatus.bFlyOrDrive = false;
+	sStatus.ui8Mode = 'D';
+#elif AIRMTRS_ACTIVATED
+	sStatus.ui8Mode = 'F';
 #else
-	sStatus.bFlyOrDrive = true;
+	sStatus.ui8Mode = 'A';
 #endif
 
 #if DEBUG
@@ -670,6 +667,8 @@ int main(void) {
 	// The Systick cannot handle any value larger than 16MHz.
 	TurnOffLED(1);
 	SysTickPeriodSet(SYSCLOCKSPEED / UPDATE_TRAJECTORY_RATE);
+	SysTickIntRegister(SysTickIntHandler);
+	SysTickIntEnable();
 
 	//
 	// Print menu.
@@ -677,7 +676,7 @@ int main(void) {
 
 	//
 	// Program start.
-	while (g_Quit) {
+	while (!g_Quit) {
 		//
 		// First check for commands from Console.
 		if (g_ConsoleFlag)
@@ -724,6 +723,7 @@ int main(void) {
 	// Disarm system and disable all motors.
     IntMasterDisable();
 
+#if GNDMTRS_ACTIVATED
     //
     // Set the ground motors to zero throttle.
     uint8_t txBuffer[4];
@@ -743,7 +743,9 @@ int main(void) {
     // Send the command to the RW motor.
     Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
             txBuffer);
+#endif
 
+#if AIRMTRS_ACTIVATED
     //
     // Set the air motors to zero throttle and disable the generators.
     PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
@@ -754,6 +756,7 @@ int main(void) {
     PWMGenDisable(PWM0_BASE, PWM_GEN_0);
     PWMGenDisable(PWM0_BASE, PWM_GEN_1);
     PWMGenDisable(PWM0_BASE, PWM_GEN_2);
+#endif
 
     //
     // Turn off all LEDs except for the first and fourth
@@ -775,77 +778,75 @@ int main(void) {
 //
 //*****************************************************************************
 void SysTickIntHandler(void) {
-	switch (ui8Mode)
+	switch (sStatus.ui8Mode)
 	{
 		case 'D': { // Driving
-		            uint8_t txBuffer[4];
+#if GNDMTRS_ACTIVATED
+		uint8_t txBuffer[4];
 
-            //
-            // Check the direction. For the LW, CCW is the forward direction.
-            if (sThrottle.i32LWThrottlePerc >= 0)
-            {
-                //
-                // Rotate the wheel in the CCW direction. (0 - 1023)
-                sThrottle.ui16GndMtrLWThrottle = RX24_THROTTLE_INCREMENT
-                        * sThrottle.i32LWThrottlePerc;
-            }
-            else if (sThrottle.i32LWThrottlePerc < 0)
-            {
-                //
-                // Rotate the wheel in the CW direction. (1024 - 2047).
-                sThrottle.ui16GndMtrLWThrottle = RX24_THROTTLE_INCREMENT
-                        * (-sThrottle.i32LWThrottlePerc) + 1024;
-            }
+		//
+		// Check the direction. For the LW, CCW is the forward direction.
+		if (sThrottle.i32LWThrottlePerc >= 0) {
+			//
+			// Rotate the wheel in the CCW direction. (0 - 1023)
+			sThrottle.ui16GndMtrLWThrottle = RX24_THROTTLE_INCREMENT
+					* sThrottle.i32LWThrottlePerc;
+		} else if (sThrottle.i32LWThrottlePerc < 0) {
+			//
+			// Rotate the wheel in the CW direction. (1024 - 2047).
+			sThrottle.ui16GndMtrLWThrottle = RX24_THROTTLE_INCREMENT
+					* (-sThrottle.i32LWThrottlePerc) + 1024;
+		}
 
-            //
-            // Check the RW direction. CW is forward direction.
-            if (sThrottle.i32RWThrottlePerc >= 0)
-            {
-                //
-                // Rotate the wheel in the CW direction. (1024 - 2047)
-                sThrottle.ui16GndMtrRWThrottle = RX24_THROTTLE_INCREMENT
-                        * sThrottle.i32RWThrottlePerc + 1024;
-            }
-            else if (sThrottle.i32RWThrottlePerc < 0)
-            {
-                //
-                // Rotate the wheel in the CCW direction. (0 - 1023).
-                sThrottle.ui16GndMtrRWThrottle = RX24_THROTTLE_INCREMENT
-                        * (-sThrottle.i32RWThrottlePerc);
-            }
+		//
+		// Check the RW direction. CW is forward direction.
+		if (sThrottle.i32RWThrottlePerc >= 0) {
+			//
+			// Rotate the wheel in the CW direction. (1024 - 2047)
+			sThrottle.ui16GndMtrRWThrottle = RX24_THROTTLE_INCREMENT
+					* sThrottle.i32RWThrottlePerc + 1024;
+		} else if (sThrottle.i32RWThrottlePerc < 0) {
+			//
+			// Rotate the wheel in the CCW direction. (0 - 1023).
+			sThrottle.ui16GndMtrRWThrottle = RX24_THROTTLE_INCREMENT
+					* (-sThrottle.i32RWThrottlePerc);
+		}
 
-            //
-            // Build the LW instruction packet.
-            txBuffer[0] = RX24_WRITE_DATA;
-            txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
-            txBuffer[2] = (uint8_t) (sThrottle.ui16GndMtrLWThrottle & 0x00ff);
-            txBuffer[3] = (uint8_t) (sThrottle.ui16GndMtrLWThrottle >> 8);
+		//
+		// Build the LW instruction packet.
+		txBuffer[0] = RX24_WRITE_DATA;
+		txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+		txBuffer[2] = (uint8_t) (sThrottle.ui16GndMtrLWThrottle & 0x00ff);
+		txBuffer[3] = (uint8_t) (sThrottle.ui16GndMtrLWThrottle >> 8);
 
-            //
-            // Send the command to the LW motor.
-            Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION,
-                       4, txBuffer);
+		//
+		// Send the command to the LW motor.
+		Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION, 4,
+				txBuffer);
 
-            //
-            // Build the RW instruction packet.
-            txBuffer[2] = (uint8_t) (sThrottle.ui16GndMtrRWThrottle & 0x00ff);
-            txBuffer[3] = (uint8_t) (sThrottle.ui16GndMtrRWThrottle >> 8);
+		//
+		// Build the RW instruction packet.
+		txBuffer[2] = (uint8_t) (sThrottle.ui16GndMtrRWThrottle & 0x00ff);
+		txBuffer[3] = (uint8_t) (sThrottle.ui16GndMtrRWThrottle >> 8);
 
-            //
-            // Send the command to the RW motor.
-            Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION,
-                       4, txBuffer);
+		//
+		// Send the command to the RW motor.
+		Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
+				txBuffer);
 
 #if DEBUG
-            if (g_PrintFlag)
-            {
-                UARTprintf("Driving.\r\n");
-                UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", g_ui32RWThrottle,
-                        g_ui32LWThrottle);
-            }
-#endif
+		if (g_PrintFlag)
+		{
+			UARTprintf("Driving.\r\n");
+			UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", g_ui32RWThrottle,
+					g_ui32LWThrottle);
 		}
+#endif
+#endif
+		break;
+	}
 		case 'F': { // Flying
+#if AIRMTRS_ACTIVATED
 			 float fPitchError, fRollError, fPitchDotDot, fRollDotDot;
             float fMx, fMy, fMz, fFz;
             float fKp = 30 * 10;
@@ -906,8 +907,11 @@ void SysTickIntHandler(void) {
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.ui32AirMtr2Throttle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.ui32AirMtr3Throttle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.ui32AirMtr4Throttle);
+#endif
+            break;
 		}
 		case 'A': { // Autonomous - lost radio connection or something.
+#if GNDMTRS_ACTIVATED
 			uint8_t txBuffer[4];
 
             // Build the instruction packet.
@@ -925,8 +929,10 @@ void SysTickIntHandler(void) {
             // Send the command to the RW motor.
             Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION,
                        4, txBuffer);
+#endif
 
-			//
+#if AIRMTRS_ACTVIATED
+            //
 			// Zero out the air motors.
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
@@ -936,26 +942,14 @@ void SysTickIntHandler(void) {
             //
             // A smarter system, would do more than just zero out the throttle, in case
             // the vehicle is currently in the air, it could safely descend to the ground.
+#endif
+            break;
+	}
 	}
 	
-
-    if (!sStatus.bMode) { // Manual Mode.
-        if (!sStatus.bFlyOrDrive) { // Manual Driving.
-
-}
-        else { // Manual flying
-
-	}
-    }
-    else { // Operating in autonomous mode.
-        if (!sStatus.bFlyOrDrive) { // Auto driving - just zero out the gnd motors.
-            
-        }
-    }
-
     //
     // Blink LED 4 once per second.
-    if (g_SysTickCount >= UPDATE_TRAJECTORY_RATE)
+    if (g_SysTickCount >= (UPDATE_TRAJECTORY_RATE / 2))
     {
         if (g_LED4On)
         {
@@ -1014,13 +1008,12 @@ void ConsoleIntHandler(void) {
 // Interrupt handler which handles reception of characters from the radio.
 //
 //*****************************************************************************
-void RadioIntHandler(void) {
-
+void RadioIntHandler2(void) {
 	static uint8_t ui8Index = 0;
-	static uint8_t ui8Magic[4] = { 0 };
+	static uint8_t ui8Magic[40] = { 0 };
 	static uint8_t ui8MagicCount;
 	static bool bValidData = false;
-	int32_t i32RxChar;
+	static int32_t i32RxChar;
 
 	//
 	// Get the interrupt status and clear the associated interrupt.
@@ -1038,20 +1031,17 @@ void RadioIntHandler(void) {
 				//
 				// Get the chars over the UART.
 				g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
-				if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0' ||
-						g_sRxPack.ui8Data[3] == 'A' || g_sRxPack.ui8Data[3] == 'D')
-						&& ui8Index >= sizeof(tGSTPacket))
+				if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0' || g_sRxPack.ui8Data[3] == 'A' || g_sRxPack.ui8Data[3] == 'D') && ui8Index >= sizeof(tGSTPacket))
 						|| (g_sRxPack.ui8Data[3] == 'C'
 								&& ui8Index >= sizeof(tGSCPacket))) {
 					ui8Index = 0;
-					g_RadioFlag = true;
 					bValidData = false;
 
 					//
 					// Good radio connection. Reset the timer and set the status.
 					sStatus.bRadioConnected = true;
 					TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
-							SYSCLOCKSPEED / GS_RADIO_RATE);
+							16000000 / GS_RADIO_RATE);
 
 					//
 					// Process the radio commands.
@@ -1423,7 +1413,7 @@ void RadioTimeoutIntHandler(void) {
 	//
 	// Set the new status of the platform.
 	sStatus.bRadioConnected = false;
-	sStatus.bMode = true;
+	sStatus.ui8Mode = 'A';
 }
 
 //*****************************************************************************
@@ -2159,10 +2149,6 @@ void ProcessRadio(void) {
 			//
 			// Change the status to Autonomous.
 			sStatus.ui8Mode = 'A';
-			
-			//
-			// Change the status of the platform to autonomous.
-			sStatus.bMode = true;
 
 			//
 			// The target location has now been set.
@@ -2171,10 +2157,6 @@ void ProcessRadio(void) {
 			break;
 		}
 		case 'C': {
-			//
-			// Change the status of the platform to manual.
-			sStatus.bMode = false;
-
 			//
 			// Check if we are flying or driving and update the Status.
 			if (g_sRxPack.sControlPacket.flyordrive == g_sRxPack.sControlPacket.fdConfirm)
@@ -2200,7 +2182,6 @@ void ProcessRadio(void) {
 	                    sThrottle.i32LWThrottlePerc = -100;
 				}
 				else if (g_sRxPack.sControlPacket.flyordrive == 'F') {
-
 				    //
 				    // Set the system status to flying.
 				    sStatus.ui8Mode = 'F';
@@ -2237,7 +2218,6 @@ void ProcessRadio(void) {
 			//
 			// Change the mode to autonomous.
 			sStatus.ui8Mode = 'A';
-			sStatus.bMode = true;
 
 			//
 			// Receiving bad data. Tell main to ignore it.
@@ -2254,6 +2234,7 @@ void ProcessRadio(void) {
 			// Turn on all the LEDs to indicate waiting to re-arm.
 			TurnOnLED(5);
 
+#if GNDMTRS_ACTVIATED
 		    //
 		    // Set the ground motors to zero throttle.
 		    uint8_t txBuffer[4];
@@ -2273,7 +2254,9 @@ void ProcessRadio(void) {
 		    // Send the command to the RW motor.
 		    Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
 		            txBuffer);
+#endif
 
+#if AIRMTRS_ACTIVATED
 			//
 		    // Set the air motors to zero throttle and disable the generators.
 		    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
@@ -2284,6 +2267,7 @@ void ProcessRadio(void) {
 		    PWMGenDisable(PWM0_BASE, PWM_GEN_0);
 		    PWMGenDisable(PWM0_BASE, PWM_GEN_1);
 		    PWMGenDisable(PWM0_BASE, PWM_GEN_2);
+#endif
 
 		    //
 		    // Disable interrupts except for the radio and sensors.
@@ -2326,10 +2310,6 @@ void ProcessRadio(void) {
 		}
 		}
 	}
-
-	//
-	// Reset the flag.
-	g_RadioFlag = false;
 }
 
 //*****************************************************************************
@@ -2432,7 +2412,7 @@ void SendPacket(void) {
 
 		//
 		// Mode of operation.
-		if (sStatus.bFlyOrDrive) {
+		if (sStatus.ui8Mode == 'F') { // flying
 			g_Pack.pack.movement = 'F';
 			g_Pack.pack.amtr1 = true;
 			g_Pack.pack.amtr2 = true;
@@ -2440,10 +2420,19 @@ void SendPacket(void) {
 			g_Pack.pack.amtr4 = true;
 			g_Pack.pack.gndmtr1 = false;
 			g_Pack.pack.gndmtr2 = false;
-		} else {
+		} else if (sStatus.ui8Mode == 'D') { // driving
 			g_Pack.pack.movement = 'D';
 			g_Pack.pack.gndmtr1 = true;
 			g_Pack.pack.gndmtr2 = true;
+			g_Pack.pack.amtr1 = false;
+			g_Pack.pack.amtr2 = false;
+			g_Pack.pack.amtr3 = false;
+			g_Pack.pack.amtr4 = false;
+		}
+		else { // autonomous
+			g_Pack.pack.movement = 'D';
+			g_Pack.pack.gndmtr1 = false;
+			g_Pack.pack.gndmtr2 = false;
 			g_Pack.pack.amtr1 = false;
 			g_Pack.pack.amtr2 = false;
 			g_Pack.pack.amtr3 = false;
@@ -2701,3 +2690,95 @@ void WaitForArming(void)
 
 }
 
+
+//
+//
+// Radio IntHandler - remade
+//
+//
+void RadioIntHandler(void)
+{
+	bool bValidData = false;
+	bool bDone = false;
+	uint8_t ui8Magic[4] = { 0 };
+	uint8_t ui8Index = 0;
+	int32_t i32RxChar;
+
+	while ((UARTCharsAvail(RADIO_UART)) && (!bDone))
+	{
+		//
+		// Get the character from the Radio.
+		i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
+
+		//
+		// Find the magic packet if the data is not valid.
+		if (!bValidData) {
+			ui8Magic[ui8Index % 4] = (uint8_t) i32RxChar;
+
+			if ((ui8Magic[ui8Index % 4] == 0xFF)
+					&& (ui8Magic[(ui8Index + 1) % 4] == 0xFF)
+					&& (ui8Magic[(ui8Index + 2) % 4] == 0xFF)
+					&& ((ui8Magic[(ui8Index + 3) % 4] == 'C')
+							|| (ui8Magic[(ui8Index + 3) % 4] == 'T')
+							|| (ui8Magic[(ui8Index + 3) % 4] == '0')
+							|| (ui8Magic[(ui8Index + 3) % 4] == 'A')
+							|| (ui8Magic[(ui8Index + 3) % 4] == 'D'))) {
+
+				//
+				// Found the magic packet.
+				bValidData = true;
+
+				g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index + 3) % 4];
+				ui8Index = 4;
+			}
+		}
+		else {
+			//
+			// Found the magic packet. Process the remaining string.
+			switch (g_sRxPack.ui8Data[3])
+			{
+			case 'T':
+			case '0':
+			case 'A':
+			case 'D':
+			{
+				//
+				// Target or Arm/Disarm packet.
+				if (ui8Index < sizeof(g_sRxPack.sTargetPacket)) {
+					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
+				}
+				else {
+					//
+					// Finished the packet. Do the processing.
+					ProcessRadio();
+
+					bDone = true;
+				}
+
+				break;
+			}
+			case 'C':
+			{
+				//
+				// Control packet.
+				if (ui8Index < sizeof(g_sRxPack.sControlPacket)) {
+					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
+				}
+				else {
+					//
+					// Finished the packet. Do the processing.
+					ProcessRadio();
+
+					bDone = true;
+				}
+
+				break;
+			}
+			}
+		}
+
+		//
+		// Increment the index.
+		ui8Index++;
+	}
+}

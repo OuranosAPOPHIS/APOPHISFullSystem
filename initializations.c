@@ -90,16 +90,6 @@ void InitLED(void) {
 	// Configure the pins as output pins.
 	GPIOPinTypeGPIOOutput(LED_PORT1, LED1_PIN | LED2_PIN);
 	GPIOPinTypeGPIOOutput(LED_PORT2, LED3_PIN | LED4_PIN);
-
-	//
-	// Initialize a 1 second SysTick for blinking the LED pin 4 to indicate
-	// program running.
-	SysTickPeriodSet(SYSCLOCKSPEED);
-
-	//
-	// Register the interrupt handler for blinking the LED and enable it.
-	SysTickIntRegister(SysTickIntHandler);
-	SysTickIntEnable();
 }
 
 /*
