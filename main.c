@@ -1005,70 +1005,96 @@ void ConsoleIntHandler(void) {
 
 //*****************************************************************************
 //
-// Interrupt handler which handles reception of characters from the radio.
+// Interrupt handler which handles reception of data from the radio.
 //
 //*****************************************************************************
-void RadioIntHandler2(void) {
-	static uint8_t ui8Index = 0;
-	static uint8_t ui8Magic[40] = { 0 };
-	static uint8_t ui8MagicCount;
-	static bool bValidData = false;
-	static int32_t i32RxChar;
+void RadioIntHandler(void)
+{
+	bool bValidData = false;
+	bool bDone = false;
+	uint8_t ui8Magic[4] = { 0 };
+	uint8_t ui8Index = 0;
+	int32_t i32RxChar;
 
 	//
-	// Get the interrupt status and clear the associated interrupt.
+	// Clear the interrupt.
 	uint32_t ui32Status = UARTIntStatus(RADIO_UART, true);
 	UARTIntClear(RADIO_UART, ui32Status);
 
-	//
-	// Get the character received and send it to the console.
-	while (UARTCharsAvail(RADIO_UART)) {
+	while ((UARTCharsAvail(RADIO_UART)) && (!bDone))
+	{
+		//
+		// Get the character from the Radio.
 		i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
-		if (ui8Index >= (sizeof(uRxPack)))
-			ui8Index = 0;
-		if (i32RxChar != -1) {
-			if (bValidData) {
+
+		//
+		// Find the magic packet if the data is not valid.
+		if (!bValidData) {
+			ui8Magic[ui8Index % 4] = (uint8_t) i32RxChar;
+			ui8Index = (ui8Index + 1) % 4;
+
+			if ((ui8Magic[(ui8Index) % 4] == 0xFF)
+					&& (ui8Magic[(ui8Index + 1) % 4] == 0xFF)
+					&& (ui8Magic[(ui8Index + 2) % 4] == 0xFF)
+					&& ((ui8Magic[(ui8Index + 3) % 4] == 'C')
+							|| (ui8Magic[(ui8Index + 3) % 4] == 'T')
+							|| (ui8Magic[(ui8Index + 3) % 4] == '0')
+							|| (ui8Magic[(ui8Index + 3) % 4] == 'A')
+							|| (ui8Magic[(ui8Index + 3) % 4] == 'D'))) {
+
 				//
-				// Get the chars over the UART.
-				g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
-				if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0' || g_sRxPack.ui8Data[3] == 'A' || g_sRxPack.ui8Data[3] == 'D') && ui8Index >= sizeof(tGSTPacket))
-						|| (g_sRxPack.ui8Data[3] == 'C'
-								&& ui8Index >= sizeof(tGSCPacket))) {
-					ui8Index = 0;
-					bValidData = false;
+				// Found the magic packet.
+				bValidData = true;
 
-					//
-					// Good radio connection. Reset the timer and set the status.
-					sStatus.bRadioConnected = true;
-					TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
-							16000000 / GS_RADIO_RATE);
+				g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index + 3) % 4];
+				ui8Index = 4;
+			}
+		}
+		else {
+			//
+			// Found the magic packet. Process the remaining string.
+			switch (g_sRxPack.ui8Data[3])
+			{
+			case 'T':
+			case '0':
+			case 'A':
+			case 'D':
+			{
+				//
+				// Target or Arm/Disarm packet.
+				while(ui8Index < sizeof(g_sRxPack.sTargetPacket)) {
+					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
+					ui8Index++;
 
-					//
-					// Process the radio commands.
-					ProcessRadio();
-
-					break;
+					i32RxChar = UARTCharGet(RADIO_UART);
 				}
-			} else {
-				ui8Magic[ui8Index] = (uint8_t) i32RxChar;
-				ui8Index = (ui8Index + 1) % 4;
-				if (ui8MagicCount >= 3) {
-					if (ui8Magic[ui8Index % 4] == 0xFF
-							&& ui8Magic[(ui8Index + 1) % 4] == 0xFF
-							&& ui8Magic[(ui8Index + 2) % 4] == 0xFF
-							&& (ui8Magic[(ui8Index + 3) % 4] == 'T'
-									|| ui8Magic[(ui8Index + 3) % 4] == 'C'
-									|| ui8Magic[(ui8Index + 3) % 4] == '0'
-									|| ui8Magic[(ui8Index +3) % 4] == 'A'
-									|| ui8Magic[(ui8Index + 3) % 4] == 'D')) {
-						g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index + 3) % 4];
-						ui8Index = 4;
-						bValidData = true;
-						ui8MagicCount = 0;
-					}
-				} else {
-					ui8MagicCount++;
+
+				//
+				// Finished the packet. Do the processing.
+				ProcessRadio();
+				bDone = true;
+
+				break;
+			}
+			case 'C':
+			{
+				//
+				// Control packet.
+				while(ui8Index < sizeof(g_sRxPack.sControlPacket)) {
+					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
+					ui8Index++;
+
+					i32RxChar = UARTCharGet(RADIO_UART);
 				}
+
+				//
+				// Finished the packet. Do the processing.
+				ProcessRadio();
+
+				bDone = true;
+
+				break;
+			}
 			}
 		}
 	}
@@ -2143,6 +2169,13 @@ void ProcessGPS(void) {
 //
 //*****************************************************************************
 void ProcessRadio(void) {
+	//
+	// Good radio connection. Reset the timer and set the status.
+	sStatus.bRadioConnected = true;
+	TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
+			16000000 / GS_RADIO_RATE);
+
+
 	if (sStatus.bArmed) { // Don't mess with any system states until the system is armed.
 		switch (g_sRxPack.ui8Data[3]) {
 		case 'T': {
@@ -2688,97 +2721,4 @@ void WaitForArming(void)
     TimerEnable(UPDATE_TIMER, TIMER_B);
 #endif
 
-}
-
-
-//
-//
-// Radio IntHandler - remade
-//
-//
-void RadioIntHandler(void)
-{
-	bool bValidData = false;
-	bool bDone = false;
-	uint8_t ui8Magic[4] = { 0 };
-	uint8_t ui8Index = 0;
-	int32_t i32RxChar;
-
-	while ((UARTCharsAvail(RADIO_UART)) && (!bDone))
-	{
-		//
-		// Get the character from the Radio.
-		i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
-
-		//
-		// Find the magic packet if the data is not valid.
-		if (!bValidData) {
-			ui8Magic[ui8Index % 4] = (uint8_t) i32RxChar;
-
-			if ((ui8Magic[ui8Index % 4] == 0xFF)
-					&& (ui8Magic[(ui8Index + 1) % 4] == 0xFF)
-					&& (ui8Magic[(ui8Index + 2) % 4] == 0xFF)
-					&& ((ui8Magic[(ui8Index + 3) % 4] == 'C')
-							|| (ui8Magic[(ui8Index + 3) % 4] == 'T')
-							|| (ui8Magic[(ui8Index + 3) % 4] == '0')
-							|| (ui8Magic[(ui8Index + 3) % 4] == 'A')
-							|| (ui8Magic[(ui8Index + 3) % 4] == 'D'))) {
-
-				//
-				// Found the magic packet.
-				bValidData = true;
-
-				g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index + 3) % 4];
-				ui8Index = 4;
-			}
-		}
-		else {
-			//
-			// Found the magic packet. Process the remaining string.
-			switch (g_sRxPack.ui8Data[3])
-			{
-			case 'T':
-			case '0':
-			case 'A':
-			case 'D':
-			{
-				//
-				// Target or Arm/Disarm packet.
-				if (ui8Index < sizeof(g_sRxPack.sTargetPacket)) {
-					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
-				}
-				else {
-					//
-					// Finished the packet. Do the processing.
-					ProcessRadio();
-
-					bDone = true;
-				}
-
-				break;
-			}
-			case 'C':
-			{
-				//
-				// Control packet.
-				if (ui8Index < sizeof(g_sRxPack.sControlPacket)) {
-					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
-				}
-				else {
-					//
-					// Finished the packet. Do the processing.
-					ProcessRadio();
-
-					bDone = true;
-				}
-
-				break;
-			}
-			}
-		}
-
-		//
-		// Increment the index.
-		ui8Index++;
-	}
 }

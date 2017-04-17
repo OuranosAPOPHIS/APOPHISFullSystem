@@ -517,7 +517,76 @@ void ManualFlyUpdate(void)
     */
 }
 
+//*****************************************************************************
+//
+// Radio interrupt handler as created by Ryan Claus.
+//
+//*****************************************************************************
+void RadioIntHandler2(void) { /*
+	static uint8_t ui8Index = 0;
+	static uint8_t ui8Magic[40] = { 0 };
+	static uint8_t ui8MagicCount;
+	static bool bValidData = false;
+	static int32_t i32RxChar;
 
+	//
+	// Get the interrupt status and clear the associated interrupt.
+	uint32_t ui32Status = UARTIntStatus(RADIO_UART, true);
+	UARTIntClear(RADIO_UART, ui32Status);
+
+	//
+	// Get the character received and send it to the console.
+	while (UARTCharsAvail(RADIO_UART)) {
+		i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
+		if (ui8Index >= (sizeof(uRxPack)))
+			ui8Index = 0;
+		if (i32RxChar != -1) {
+			if (bValidData) {
+				//
+				// Get the chars over the UART.
+				g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
+				if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0' || g_sRxPack.ui8Data[3] == 'A' || g_sRxPack.ui8Data[3] == 'D') && ui8Index >= sizeof(tGSTPacket))
+						|| (g_sRxPack.ui8Data[3] == 'C'
+								&& ui8Index >= sizeof(tGSCPacket))) {
+					ui8Index = 0;
+					bValidData = false;
+
+					//
+					// Good radio connection. Reset the timer and set the status.
+					sStatus.bRadioConnected = true;
+					TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
+							16000000 / GS_RADIO_RATE);
+
+					//
+					// Process the radio commands.
+					ProcessRadio();
+
+					break;
+				}
+			} else {
+				ui8Magic[ui8Index] = (uint8_t) i32RxChar;
+				ui8Index = (ui8Index + 1) % 4;
+				if (ui8MagicCount >= 3) {
+					if (ui8Magic[ui8Index % 4] == 0xFF
+							&& ui8Magic[(ui8Index + 1) % 4] == 0xFF
+							&& ui8Magic[(ui8Index + 2) % 4] == 0xFF
+							&& (ui8Magic[(ui8Index + 3) % 4] == 'T'
+									|| ui8Magic[(ui8Index + 3) % 4] == 'C'
+									|| ui8Magic[(ui8Index + 3) % 4] == '0'
+									|| ui8Magic[(ui8Index +3) % 4] == 'A'
+									|| ui8Magic[(ui8Index + 3) % 4] == 'D')) {
+						g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index + 3) % 4];
+						ui8Index = 4;
+						bValidData = true;
+						ui8MagicCount = 0;
+					}
+				} else {
+					ui8MagicCount++;
+				}
+			}
+		}
+	}
+*/}
 
 
 
