@@ -21,13 +21,13 @@
 // are turned on or off in the program.
 #define RADIO_ACTIVATED true
 #define GPS_ACTIVATED false
-#define GNDMTRS_ACTIVATED true
+#define GNDMTRS_ACTIVATED false
 #define SECONDARY_ATTITUDE false
 #define ULTRASONIC_ACTIVATED false
 #define PAYLOAD_DEPLOY false
-#define IMU_ACTIVATED true
+#define IMU_ACTIVATED false
 #define ALTIMETER_ACTIVATED false
-#define AIRMTRS_ACTIVATED true
+#define AIRMTRS_ACTIVATED false
 
 //
 // This define determines the clock speed.
