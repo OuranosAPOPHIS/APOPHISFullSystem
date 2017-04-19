@@ -2,7 +2,7 @@
  * Project: Aerial Platform for Overland Haul and Import System (APOPHIS)
  *
  *  Created On: Jan 20, 2017
- *  Last Updated: April 14, 2017
+ *  Last Updated: April 18, 2017
  *      Author(s): Brandon Klefman
  *
  *      Purpose: Flight computer for the APOPHIS platform.
@@ -47,6 +47,8 @@
 #include "sensors/i2c_driver.h"
 #include "sensors/bme280.h"
 
+#include "motors/vehicle_properties.h"
+
 //
 // Sensor-Boosterpack Calibration data.
 #if BOOSTERPACK1
@@ -74,11 +76,6 @@
 #define ACCELLSB 16384
 #define MAGLSB 16.0f
 
-//
-// Throttle limits for the aerial motors.
-#define ZEROTHROTTLE 2204
-#define MAXTHROTTLE 3500
-
 #if IMU_ACTIVATED
 #define STABBIAS true
 #else
@@ -103,7 +100,7 @@ void Timer1BInterrupt(void);
 void SolenoidInterrupt(void);
 void BMI160IntHandler(void);
 void BME280IntHandler(void);
-void RadioTimeoutIntHandler(void);
+//void RadioTimeoutIntHandler(void);
 void TurnOnLED(uint32_t LEDNum);
 void TurnOffLED(uint32_t LEDNum);
 void Menu(char CharReceived);
@@ -117,17 +114,19 @@ void ProcessIMUData(void);
 void ProcessBME280(void);
 bool WaitForButtonPress(uint8_t desiredButtonState);
 void WaitForArming(void);
-void ManualDriveUpdate(void);
-void ManualFlyUpdate(void);
-void AutoFlyUpdate(void);
-void AutoDriveUpdate(void);
-void WatiForArming(void);
 
 //*****************************************************************************
 //
 // Global Variables
 //
 //*****************************************************************************
+
+bool bValidData = false;
+uint8_t ui8Magic[4] = { 0 };
+uint8_t ui8Index = 0;
+uint32_t MaxIndex = 0;
+
+bool g_RadioFlag = false;
 
 //*****************************************************************************
 //
@@ -137,15 +136,16 @@ void WatiForArming(void);
 //
 // State of the system structure definition and variable.
 typedef struct {
-	bool bFlyOrDrive;   // Drive is false, fly is true.
-	bool bMode;         // Autonomous is true, manual is false.
+	uint8_t ui8Mode;    // Mode of operation. 'D' - drive, 'F' - fly, 'A' - autonomous
 	bool bPayDeployed;  // True indicates the payload has already been deployed.
-	bool bPayDeploying; // True indicates payload is being deployed.
 	bool bRadioConnected; // True indicates radio is connected.
 	bool bTargetSet;    // True indicates good radio data.
 	float fRoll;		// Actual platform roll (degrees).
 	float fPitch;		// Actual platform pitch (degrees).
 	float fYaw;			// Actual platform yaw (degrees).
+	float fDesRoll;     // Desired platform roll (degrees).
+	float fDesPitch;    // Desired platform pitch (degrees).
+	int32_t i32DesYaw; // Desired direction of yaw. (+1 CW or -1 CCW rotation).
 	float fMass;			// Actual platform mass (kg).
 	float fMatI;			// Mass Moment of Inertia of the Platform
 	float fCurrentLat;		// Current Latitide.
@@ -160,7 +160,7 @@ typedef struct {
 } SystemStatus;
 
 //
-// Structure for all of the sensor values. 
+// Structure for all of the sensor values.
 typedef struct {
 	float fCurrentAccelX;		// Current Acceleration in X direction
 	float fCurrentAccelY;		// Current Acceleration in Y direction
@@ -185,10 +185,13 @@ typedef struct {
 typedef struct {
 	uint16_t ui16GndMtrLWThrottle;
 	uint16_t ui16GndMtrRWThrottle;
-	uint32_t fAirMtr1Throttle;
-	float fAirMtr2Throttle;
-	float fAirMtr3Throttle;
-	float fAirMtr4Throttle;
+	int32_t i32RWThrottlePerc;
+	int32_t i32LWThrottlePerc;
+	uint32_t ui32AirMtrThrottle;
+	uint32_t ui32AirMtr1Throttle;
+	uint32_t ui32AirMtr2Throttle;
+	uint32_t ui32AirMtr3Throttle;
+	uint32_t ui32AirMtr4Throttle;
 } SystemThrottle;
 
 //
@@ -205,6 +208,10 @@ SensorStatus sSensStatus;
 //
 // Throttle values for the air motors.
 uint32_t g_ui32ThrottleIncrement = 0;
+
+//
+// Radio connected flag which is triggered by ProcessRadio();
+bool g_bRadioFlag = false;
 
 //*****************************************************************************
 //
@@ -262,10 +269,6 @@ uTxPack g_Pack;
 //
 // Radio packet to be received from ground station.
 uRxPack g_sRxPack;
-
-//
-// Variable to indicate when Radio data is available.
-bool g_RadioFlag = false;
 
 //*****************************************************************************
 //
@@ -388,10 +391,7 @@ uint32_t g_ui32ServoEndPosition = 0;
 
 uint32_t g_ui32ServoAngle = 0;
 
-//
-// Left and right wheel throttles.
-int32_t g_ui32RWThrottle = 0;
-int32_t g_ui32LWThrottle = 0;
+bool g_RadioDone = false;
 
 //*****************************************************************************
 //
@@ -454,7 +454,6 @@ int main(void) {
 
 	//
 	// Initialize the system state.
-    sStatus.bMode = false;
     sStatus.bPayDeployed = false;
     sStatus.bRadioConnected = false;
     sStatus.bTargetSet = false;
@@ -473,10 +472,10 @@ int main(void) {
 
     //
     // Initialize the throttle of the system.
-    sThrottle.fAirMtr1Throttle = ZEROTHROTTLE;
-    sThrottle.fAirMtr2Throttle = ZEROTHROTTLE;
-    sThrottle.fAirMtr3Throttle = ZEROTHROTTLE;
-    sThrottle.fAirMtr4Throttle = ZEROTHROTTLE;
+    sThrottle.ui32AirMtr1Throttle = ZEROTHROTTLE;
+    sThrottle.ui32AirMtr2Throttle = ZEROTHROTTLE;
+    sThrottle.ui32AirMtr3Throttle = ZEROTHROTTLE;
+    sThrottle.ui32AirMtr4Throttle = ZEROTHROTTLE;
 
     sThrottle.ui16GndMtrRWThrottle = 0x0000;
     sThrottle.ui16GndMtrLWThrottle = 0x0000;
@@ -603,6 +602,8 @@ int main(void) {
 
    for (index = 0; index < 3; index++)
        g_GyroStabBias[index] = fSum[index] / numCalcs;
+
+   IntMasterDisable();
 #endif
 
    //
@@ -612,10 +613,6 @@ int main(void) {
 #endif
 
    //
-   // Initialize the timer for the update trajectory.
-   InitTrajectoryTimer();
-
-   //
    // Initialize the radio if turned on.
 #if RADIO_ACTIVATED
    InitRadio();
@@ -623,7 +620,9 @@ int main(void) {
    //
    // Activate the radio timers.
    TimerEnable(RADIO_TIMER, TIMER_A);
+#if false
    TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
+#endif
 #endif
 
    //
@@ -657,16 +656,11 @@ int main(void) {
 	//
 	// Initialize more system states based on motor information.
 #if	GNDMTRS_ACTIVATED
-	sStatus.bFlyOrDrive = false;
+	sStatus.ui8Mode = 'D';
+#elif AIRMTRS_ACTIVATED
+	sStatus.ui8Mode = 'F';
 #else
-	sStatus.bFlyOrDrive = true;
-#endif
-
-#if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
-	if (sStatus.bFlyOrDrive)
-		TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualFlyUpdate);
-	else
-		TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
+	sStatus.ui8Mode = 'A';
 #endif
 
 #if DEBUG
@@ -683,11 +677,13 @@ int main(void) {
 	TurnOffLED(5);
 
 	//
-	// Turn off LED1, and enable the systick at 12 Hz to
-	// blink LED 4, signifying regular operation.
+	// Turn off LED1, and enable the systick at 25 Hz to
+	// update the trajectory and blink LED 4, signifying regular operation.
 	// The Systick cannot handle any value larger than 16MHz.
 	TurnOffLED(1);
-	SysTickPeriodSet(SYSCLOCKSPEED / 12);
+	SysTickPeriodSet(SYSCLOCKSPEED / UPDATE_TRAJECTORY_RATE);
+	SysTickIntRegister(SysTickIntHandler);
+	SysTickIntEnable();
 
 	//
 	// Print menu.
@@ -695,7 +691,7 @@ int main(void) {
 
 	//
 	// Program start.
-	while (g_Quit) {
+	while (!g_Quit) {
 		//
 		// First check for commands from Console.
 		if (g_ConsoleFlag)
@@ -742,6 +738,7 @@ int main(void) {
 	// Disarm system and disable all motors.
     IntMasterDisable();
 
+#if GNDMTRS_ACTIVATED
     //
     // Set the ground motors to zero throttle.
     uint8_t txBuffer[4];
@@ -761,7 +758,9 @@ int main(void) {
     // Send the command to the RW motor.
     Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
             txBuffer);
+#endif
 
+#if AIRMTRS_ACTIVATED
     //
     // Set the air motors to zero throttle and disable the generators.
     PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
@@ -772,6 +771,7 @@ int main(void) {
     PWMGenDisable(PWM0_BASE, PWM_GEN_0);
     PWMGenDisable(PWM0_BASE, PWM_GEN_1);
     PWMGenDisable(PWM0_BASE, PWM_GEN_2);
+#endif
 
     //
     // Turn off all LEDs except for the first and fourth
@@ -793,9 +793,188 @@ int main(void) {
 //
 //*****************************************************************************
 void SysTickIntHandler(void) {
+	switch (sStatus.ui8Mode)
+	{
+		case 'D': { // Driving
+#if GNDMTRS_ACTIVATED
+		uint8_t txBuffer[4];
 
-	if (g_SysTickCount >= 5) {
-		if (g_LED4On) {
+		//
+		// Check the direction. For the LW, CCW is the forward direction.
+		if (sThrottle.i32LWThrottlePerc >= 0) {
+			//
+			// Rotate the wheel in the CCW direction. (0 - 1023)
+			sThrottle.ui16GndMtrLWThrottle = RX24_THROTTLE_INCREMENT
+					* sThrottle.i32LWThrottlePerc;
+		} else if (sThrottle.i32LWThrottlePerc < 0) {
+			//
+			// Rotate the wheel in the CW direction. (1024 - 2047).
+			sThrottle.ui16GndMtrLWThrottle = RX24_THROTTLE_INCREMENT
+					* (-sThrottle.i32LWThrottlePerc) + 1024;
+		}
+
+		//
+		// Check the RW direction. CW is forward direction.
+		if (sThrottle.i32RWThrottlePerc >= 0) {
+			//
+			// Rotate the wheel in the CW direction. (1024 - 2047)
+			sThrottle.ui16GndMtrRWThrottle = RX24_THROTTLE_INCREMENT
+					* sThrottle.i32RWThrottlePerc + 1024;
+		} else if (sThrottle.i32RWThrottlePerc < 0) {
+			//
+			// Rotate the wheel in the CCW direction. (0 - 1023).
+			sThrottle.ui16GndMtrRWThrottle = RX24_THROTTLE_INCREMENT
+					* (-sThrottle.i32RWThrottlePerc);
+		}
+
+		//
+		// Build the LW instruction packet.
+		txBuffer[0] = RX24_WRITE_DATA;
+		txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+		txBuffer[2] = (uint8_t) (sThrottle.ui16GndMtrLWThrottle & 0x00ff);
+		txBuffer[3] = (uint8_t) (sThrottle.ui16GndMtrLWThrottle >> 8);
+
+		//
+		// Send the command to the LW motor.
+		Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION, 4,
+				txBuffer);
+
+		//
+		// Build the RW instruction packet.
+		txBuffer[2] = (uint8_t) (sThrottle.ui16GndMtrRWThrottle & 0x00ff);
+		txBuffer[3] = (uint8_t) (sThrottle.ui16GndMtrRWThrottle >> 8);
+
+		//
+		// Send the command to the RW motor.
+		Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
+				txBuffer);
+
+#if DEBUG
+		if (g_PrintFlag)
+		{
+			UARTprintf("Driving.\r\n");
+			UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", g_ui32RWThrottle,
+					g_ui32LWThrottle);
+		}
+#endif
+#endif
+		break;
+	}
+		case 'F': { // Flying
+#if AIRMTRS_ACTIVATED
+			float fPitchError, fRollError, fPitchDotDot, fRollDotDot;
+			float fPitchDot, fRollDot;
+            float fMx, fMy, fMz, fFz;
+            float fKd = 30;
+            float fKp = 10;
+            float fTh1, fTh2, fTh3, fTh4;
+
+            //
+            // Pitch and roll errors.
+            fPitchError = sStatus.fDesPitch - sStatus.fPitch;
+            fRollError = sStatus.fDesRoll - sStatus.fRoll;
+
+            //
+            // Figure out the yaw rate.
+            if (sStatus.i32DesYaw == 1)
+                //
+                // Rotate Clockwise.
+                fMz = IYY * 10; // (degrees/s/s)
+            else if (sStatus.i32DesYaw == -1)
+                //
+                // Rotate CCW.
+                fMz = IYY * -10; // (degrees/s/s)
+            else
+                //
+                // No yaw rotation.
+                fMz = 0;
+
+            //
+            // Calculate Fz based on the throttle command.
+            fFz = (float)sThrottle.ui32AirMtrThrottle;
+
+            //
+            // Desired angular velocity.
+            fPitchDot = fPitchError * fKd;
+            fRollDot = fRollError * fKp;
+
+            //
+            // Desired angular accelerations.
+            fPitchDotDot = fPitchDot * fKp;
+            fRollDotDot = fRollDot * fKp;
+
+            //
+            // Calculate Mx, My for desired thrusts.
+            fMx = IXX * fPitchDotDot;
+            fMy = IYY * fRollDotDot;
+
+            //
+            // Desired thrusts based on desired angular acceleration
+            // and throttle values.
+            fTh1 = B11 * fMx + B12 * fMy + B13 * fMz + B14 * fFz;
+            fTh2 = B21 * fMx + B22 * fMy + B23 * fMz + B24 * fFz;
+            fTh3 = B31 * fMx + B32 * fMy + B33 * fMz + B34 * fFz;
+            fTh4 = B41 * fMx + B42 * fMy + B43 * fMz + B44 * fFz;
+
+            //
+            // Convert from a force to a commanded value.
+            sThrottle.ui32AirMtr1Throttle = (uint32_t)(fTh1 * THRUST_CMD_RATIO + ZEROTHROTTLE);
+            sThrottle.ui32AirMtr2Throttle = (uint32_t)(fTh2 * THRUST_CMD_RATIO + ZEROTHROTTLE);
+            sThrottle.ui32AirMtr3Throttle = (uint32_t)(fTh3 * THRUST_CMD_RATIO + ZEROTHROTTLE);
+            sThrottle.ui32AirMtr4Throttle = (uint32_t)(fTh4 * THRUST_CMD_RATIO + ZEROTHROTTLE);
+
+            //
+            // Send the commands to the motors.
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.ui32AirMtr1Throttle);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.ui32AirMtr2Throttle);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.ui32AirMtr3Throttle);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.ui32AirMtr4Throttle);
+#endif
+            break;
+		}
+		case 'A': { // Autonomous - lost radio connection or something.
+#if GNDMTRS_ACTIVATED
+			uint8_t txBuffer[4];
+
+            // Build the instruction packet.
+            txBuffer[0] = RX24_WRITE_DATA;
+            txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+            txBuffer[2] = 0x00;
+            txBuffer[3] = 0x00;
+
+            //
+            // Send the command to the LW motor.
+            Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION,
+                       4, txBuffer);
+
+            //
+            // Send the command to the RW motor.
+            Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION,
+                       4, txBuffer);
+#endif
+
+#if AIRMTRS_ACTVIATED
+            //
+			// Zero out the air motors.
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
+
+            //
+            // A smarter system, would do more than just zero out the throttle, in case
+            // the vehicle is currently in the air, it could safely descend to the ground.
+#endif
+            break;
+	}
+	}
+
+    //
+    // Blink LED 4 once per second.
+    if (g_SysTickCount >= (UPDATE_TRAJECTORY_RATE / 2))
+    {
+        if (g_LED4On)
+        {
 			//
 			// Turn off LED 4 if it is on.
 			TurnOffLED(4);
@@ -808,6 +987,52 @@ void SysTickIntHandler(void) {
 
 			g_LED4On = true;
 		}
+
+        //
+        // Also, check if we still have a radio connection.
+        if (!g_bRadioFlag) {
+            sStatus.ui8Mode = 'A';
+            sStatus.bArmed = false;
+
+#if GNDMTRS_ACTVIATED
+            //
+            // Set the ground motors to zero throttle.
+            uint8_t txBuffer[4];
+
+            // Build the instruction packet.
+            txBuffer[0] = RX24_WRITE_DATA;
+            txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+            txBuffer[2] = 0x00;
+            txBuffer[3] = 0x00;
+
+            //
+            // Send the command to the LW motor.
+            Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION, 4,
+                    txBuffer);
+
+            //
+            // Send the command to the RW motor.
+            Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
+                    txBuffer);
+#endif
+
+#if AIRMTRS_ACTIVATED
+            //
+            // Set the air motors to zero throttle and disable the generators.
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
+
+            PWMGenDisable(PWM0_BASE, PWM_GEN_0);
+            PWMGenDisable(PWM0_BASE, PWM_GEN_1);
+            PWMGenDisable(PWM0_BASE, PWM_GEN_2);
+#endif
+        }
+
+        //
+        // Reset the flag.
+        g_bRadioFlag = false;
 
 #if DEBUG
 		//
@@ -848,77 +1073,60 @@ void ConsoleIntHandler(void) {
 
 //*****************************************************************************
 //
-// Interrupt handler which handles reception of characters from the radio.
+// Interrupt handler which handles reception of data from the radio.
 //
 //*****************************************************************************
-void RadioIntHandler(void) {
+void RadioIntHandler(void)
+{
 
-	static uint8_t ui8Index = 0;
-	static uint8_t ui8Magic[4] = { 0 };
-	static uint8_t ui8MagicCount;
-	static bool bValidData = false;
-	int32_t i32RxChar;
+    // TODO: wtf magic!?
 
-	//
-	// Get the interrupt status and clear the associated interrupt.
-	uint32_t ui32Status = UARTIntStatus(RADIO_UART, true);
-	UARTIntClear(RADIO_UART, ui32Status);
+    static uint8_t ui8Index = 0;
+    static uint8_t ui8Magic[4] = {0};
+    static uint8_t ui8MagicCount;
+    static bool bValidData = false;
+    int32_t i32RxChar;
 
-	//
-	// Get the character received and send it to the console.
-	while (UARTCharsAvail(RADIO_UART)) {
-		i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
-		if (ui8Index >= (sizeof(uRxPack)))
-			ui8Index = 0;
-		if (i32RxChar != -1) {
-			if (bValidData) {
-				//
-				// Get the chars over the UART.
-				g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
-				if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0' ||
-						g_sRxPack.ui8Data[3] == 'A' || g_sRxPack.ui8Data[3] == 'D')
-						&& ui8Index >= sizeof(tGSTPacket))
-						|| (g_sRxPack.ui8Data[3] == 'C'
-								&& ui8Index >= sizeof(tGSCPacket))) {
-					ui8Index = 0;
-					g_RadioFlag = true;
-					bValidData = false;
+    //
+    // Get the interrupt status and clear the associated interrupt.
+    uint32_t ui32Status = UARTIntStatus(RADIO_UART, true);
+    UARTIntClear(RADIO_UART, ui32Status);
 
-					//
-					// Good radio connection. Reset the timer and set the status.
-					sStatus.bRadioConnected = true;
-					TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
-							SYSCLOCKSPEED / GS_RADIO_RATE);
+    //
+    // Get the character received and send it to the console.
+    while(UARTCharsAvail(RADIO_UART))
+    {
+        i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
+        if (ui8Index >= (sizeof(uRxPack))) ui8Index = 0;
+        if (i32RxChar != -1) {
+            if (bValidData) {
+                //
+                // Get the chars over the UART.
+                g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
+                if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0' || g_sRxPack.ui8Data[3] == 'A' || g_sRxPack.ui8Data[3] == 'D') && ui8Index >= sizeof(tGSTPacket)) || (g_sRxPack.ui8Data[3] == 'C' && ui8Index >= sizeof(tGSCPacket))) {
+                    ui8Index = 0;
+                    bValidData = false;
 
-					//
-					// Process the radio commands.
-					ProcessRadio();
+                    ProcessRadio();
 
-					break;
-				}
-			} else {
-				ui8Magic[ui8Index] = (uint8_t) i32RxChar;
-				ui8Index = (ui8Index + 1) % 4;
-				if (ui8MagicCount >= 3) {
-					if (ui8Magic[ui8Index % 4] == 0xFF
-							&& ui8Magic[(ui8Index + 1) % 4] == 0xFF
-							&& ui8Magic[(ui8Index + 2) % 4] == 0xFF
-							&& (ui8Magic[(ui8Index + 3) % 4] == 'T'
-									|| ui8Magic[(ui8Index + 3) % 4] == 'C'
-									|| ui8Magic[(ui8Index + 3) % 4] == '0'
-									|| ui8Magic[(ui8Index +3) % 4] == 'A'
-									|| ui8Magic[(ui8Index + 3) % 4] == 'D')) {
-						g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index + 3) % 4];
-						ui8Index = 4;
-						bValidData = true;
-						ui8MagicCount = 0;
-					}
-				} else {
-					ui8MagicCount++;
-				}
-			}
-		}
-	}
+                    break;
+                }
+            } else {
+                ui8Magic[ui8Index] = (uint8_t) i32RxChar;
+                ui8Index = (ui8Index + 1) % 4;
+                if (ui8MagicCount >= 3) {
+                    if (ui8Magic[ui8Index % 4] == 0xFF && ui8Magic[(ui8Index+1) % 4] == 0xFF && ui8Magic[(ui8Index+2) % 4] == 0xFF && (ui8Magic[(ui8Index+3) % 4] == 'T' || ui8Magic[(ui8Index+3) % 4] == 'C' || ui8Magic[(ui8Index+3) % 4] == '0' || ui8Magic[(ui8Index+3) % 4] == 'A' || ui8Magic[(ui8Index+3) % 4] == 'D')) {
+                        g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index+3) % 4];
+                        ui8Index = 4;
+                        bValidData = true;
+                        ui8MagicCount = 0;
+                    }
+                } else {
+                    ui8MagicCount++;
+                }
+            }
+        }
+    }
 }
 
 //*****************************************************************************
@@ -1246,6 +1454,7 @@ void BME280IntHandler(void) {
 // communication.
 //
 //*****************************************************************************
+#if false
 void RadioTimeoutIntHandler(void) {
 	uint32_t ui32Status;
 
@@ -1260,83 +1469,9 @@ void RadioTimeoutIntHandler(void) {
 	//
 	// Set the new status of the platform.
 	sStatus.bRadioConnected = false;
-	sStatus.bMode = true;
-
-	//
-	// Set the update trajectory to autonomous.
-	if (sStatus.bFlyOrDrive)
-		TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoFlyUpdate);
-	else
-		TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoDriveUpdate);
-
+	sStatus.ui8Mode = 'A';
 }
-
-//*****************************************************************************
-//
-// Updates the DCM at a consistent rate of 25Hz.
-//
-//*****************************************************************************
-void DCMUpdateTimer(void) {
-	uint32_t ui32Status;
-
-	//
-	// Get the interrupt status.
-	ui32Status = TimerIntStatus(DCM_TIMER, true);
-
-	//
-	// Clear the interrupt.
-	TimerIntClear(DCM_TIMER, ui32Status);
-
-	//
-	// Check if this is the first time.
-	if (g_bDCMStarted == 0) {
-		//
-		// Start the DCM.
-		CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX,
-				g_Pack.pack.accelY, g_Pack.pack.accelZ);
-
-		CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1],
-				g_fGyroData[2]);
-
-		CompDCMMagnetoUpdate(&g_sCompDCMInst, g_fMagData[0], g_fMagData[1],
-				g_fMagData[2]);
-
-		CompDCMStart(&g_sCompDCMInst);
-
-		g_bDCMStarted = true;
-	} else {
-		//
-		// DCM is already started, just update it.
-		CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX,
-				g_Pack.pack.accelY, g_Pack.pack.accelZ);
-
-		CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1],
-				g_fGyroData[2]);
-
-		CompDCMMagnetoUpdate(&g_sCompDCMInst, g_fMagData[0], g_fMagData[1],
-				g_fMagData[2]);
-
-		CompDCMUpdate(&g_sCompDCMInst);
-	}
-
-	//
-	// Get the Euler angles.
-	CompDCMComputeEulers(&g_sCompDCMInst, &sStatus.fRoll, &sStatus.fPitch,
-			&sStatus.fYaw);
-
-	//
-	// Flip the roll axis. Positive is roll right.
-	sStatus.fRoll *= -1;
-
-	//
-	// Convert Eulers to degrees. 180/PI = 57.29...
-	// Convert Yaw to 0 to 360 to approximate compass headings.
-	sStatus.fRoll *= 57.295779513082320876798154814105f;
-	sStatus.fPitch *= 57.295779513082320876798154814105f;
-	sStatus.fYaw *= 57.295779513082320876798154814105f;
-	if (sStatus.fYaw < 0)
-		sStatus.fYaw += 360.0f;
-}
+#endif
 
 //*****************************************************************************
 //
@@ -1628,27 +1763,27 @@ void Menu(char charReceived) {
 #if AIRMTRS_ACTIVATED
 	case 'w': // Increase throttle of air motors.
 	{
-		sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.fAirMtr1Throttle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.fAirMtr1Throttle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.fAirMtr1Throttle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.fAirMtr1Throttle);
+		sThrottle.ui32AirMtrThrottle += g_ui32ThrottleIncrement;
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.ui32AirMtrThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.ui32AirMtrThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.ui32AirMtrThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.ui32AirMtrThrottle);
 
-		UARTprintf("Throttle Increase: %d\r\n", sThrottle.fAirMtr1Throttle);
+		UARTprintf("Throttle Increase: %d\r\n", sThrottle.ui32AirMtrThrottle);
 		break;
 	}
 	case 's': // Decrease throttle of air motors.
 	{
-		sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
+		sThrottle.ui32AirMtrThrottle -= g_ui32ThrottleIncrement;
 
-		if (sThrottle.fAirMtr1Throttle < ZEROTHROTTLE)
-			sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.fAirMtr1Throttle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.fAirMtr1Throttle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.fAirMtr1Throttle);
-		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.fAirMtr1Throttle);
+		if (sThrottle.ui32AirMtrThrottle < ZEROTHROTTLE)
+			sThrottle.ui32AirMtrThrottle += g_ui32ThrottleIncrement;
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, sThrottle.ui32AirMtrThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.ui32AirMtrThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.ui32AirMtrThrottle);
+		PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.ui32AirMtrThrottle);
 
-		UARTprintf("Throttle Decrease: %d\r\n", sThrottle.fAirMtr1Throttle);
+		UARTprintf("Throttle Decrease: %d\r\n", sThrottle.ui32AirMtrThrottle);
 		break;
 	}
 	case 'x': // kill the air throttle.
@@ -1998,19 +2133,21 @@ void ProcessGPS(void) {
 //
 //*****************************************************************************
 void ProcessRadio(void) {
+    //
+	// Good radio connection. Reset the timer and set the status.
+	sStatus.bRadioConnected = true;
+	g_bRadioFlag = true;
+
+#if false // Broken stuff.
+	//TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, 16000000 / GS_RADIO_RATE);
+#endif
+
 	if (sStatus.bArmed) { // Don't mess with any system states until the system is armed.
 		switch (g_sRxPack.ui8Data[3]) {
 		case 'T': {
 			//
-			// Change the status of the platform.
-			sStatus.bMode = true;
-
-			//
-			// Set the update trajectory to autonomous.
-			if (sStatus.bFlyOrDrive)
-				TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoFlyUpdate);
-			else
-				TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoDriveUpdate);
+			// Change the status to Autonomous.
+			sStatus.ui8Mode = 'A';
 
 			//
 			// The target location has now been set.
@@ -2020,65 +2157,66 @@ void ProcessRadio(void) {
 		}
 		case 'C': {
 			//
-			// Change the status of the platform.
-			sStatus.bMode = false;
-
-			//
 			// Check if we are flying or driving and update the Status.
-			if (g_sRxPack.sControlPacket.flyordrive
-					== g_sRxPack.sControlPacket.fdConfirm)
-				if (g_sRxPack.sControlPacket.flyordrive == 'D')
-					sStatus.bFlyOrDrive = false;
-				else if (g_sRxPack.sControlPacket.flyordrive == 'F')
-					sStatus.bFlyOrDrive = true;
+			if (g_sRxPack.sControlPacket.flyordrive == g_sRxPack.sControlPacket.fdConfirm)
+				if (g_sRxPack.sControlPacket.flyordrive == 'D') {
+				    //
+				    // Set the system state to driving.
+					sStatus.ui8Mode = 'D';
 
-			//
-			// Set the update trajectory to manual.
-			if (sStatus.bFlyOrDrive)
-				TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualFlyUpdate);
-			else {
-				TimerIntRegister(UPDATE_TIMER, TIMER_B, ManualDriveUpdate);
+	                //
+	                // Get the wheel throttles. They will be sent as percentages from -100 to 100.
+	                sThrottle.i32RWThrottlePerc = (g_sRxPack.sControlPacket.throttle);
+	                sThrottle.i32LWThrottlePerc = (g_sRxPack.sControlPacket.throttle2);
 
-				//
-				// Get the wheel throttles. They will be sent as percentages from -100 to 100.
-				g_ui32RWThrottle = (g_sRxPack.sControlPacket.throttle);
-				g_ui32LWThrottle = (g_sRxPack.sControlPacket.throttle2);
+	                //
+	                // Check to make sure neither throttle exceeds 100 or -100.
+	                if (sThrottle.i32RWThrottlePerc > 100)
+	                    sThrottle.i32RWThrottlePerc = 100;
+	                if (sThrottle.i32RWThrottlePerc < -100)
+	                    sThrottle.i32RWThrottlePerc = -100;
+	                if (sThrottle.i32LWThrottlePerc > 100)
+	                    sThrottle.i32LWThrottlePerc = 100;
+	                if (sThrottle.i32LWThrottlePerc < -100)
+	                    sThrottle.i32LWThrottlePerc = -100;
+				}
+				else if (g_sRxPack.sControlPacket.flyordrive == 'F') {
+				    //
+				    // Set the system status to flying.
+				    sStatus.ui8Mode = 'F';
 
-				//
-				// Check to make sure neither throttle exceeds 100 or -100.
-				if (g_ui32RWThrottle > 100)
-					g_ui32RWThrottle = 100;
-				if (g_ui32RWThrottle < -100)
-					g_ui32RWThrottle = -100;
-				if (g_ui32LWThrottle > 100)
-					g_ui32LWThrottle = 100;
-				if (g_ui32LWThrottle < -100)
-					g_ui32LWThrottle = -100;
-			}
+				    //
+				    // Get the throttle for all of the motors.
+				    sThrottle.ui32AirMtrThrottle = g_sRxPack.sControlPacket.throttle;
+
+				    //
+				    // Get the desired roll and pitch.
+				    sStatus.fDesRoll = g_sRxPack.sControlPacket.roll;
+				    sStatus.fDesPitch = g_sRxPack.sControlPacket.pitch;
+
+				    //
+				    // Check if we need to yaw.
+				    if (g_sRxPack.sControlPacket.yaw > 0.0f)
+				        sStatus.i32DesYaw = 1;
+				    else if (g_sRxPack.sControlPacket.yaw < 0.0f)
+				        sStatus.i32DesYaw = -1;
+				    else
+				        sStatus.i32DesYaw = 0;
+				}
+
 			//
 			// Check if we should deploy the payload.
-			if ((!sStatus.bPayDeployed)
-					&& (g_sRxPack.sControlPacket.payloadRelease
-							== g_sRxPack.sControlPacket.prConfirm))
-				if ((g_sRxPack.sControlPacket.payloadRelease == 1)
-						&& (!sStatus.bPayDeploying)) {
-					sStatus.bPayDeploying = true;
+			if ((!sStatus.bPayDeployed) &&
+			        (g_sRxPack.sControlPacket.payloadRelease == g_sRxPack.sControlPacket.prConfirm))
+				if (g_sRxPack.sControlPacket.payloadRelease == 1)
 					DeployPayload();
-				}
 
 			break;
 		}
 		case '0': {
 			//
 			// Change the mode to autonomous.
-			sStatus.bMode = true;
-
-			//
-			// Set the update trajectory to autonomous.
-			if (sStatus.bFlyOrDrive)
-				TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoFlyUpdate);
-			else
-				TimerIntRegister(UPDATE_TIMER, TIMER_B, AutoDriveUpdate);
+			sStatus.ui8Mode = 'A';
 
 			//
 			// Receiving bad data. Tell main to ignore it.
@@ -2095,6 +2233,7 @@ void ProcessRadio(void) {
 			// Turn on all the LEDs to indicate waiting to re-arm.
 			TurnOnLED(5);
 
+#if GNDMTRS_ACTVIATED
 		    //
 		    // Set the ground motors to zero throttle.
 		    uint8_t txBuffer[4];
@@ -2114,7 +2253,9 @@ void ProcessRadio(void) {
 		    // Send the command to the RW motor.
 		    Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
 		            txBuffer);
+#endif
 
+#if AIRMTRS_ACTIVATED
 			//
 		    // Set the air motors to zero throttle and disable the generators.
 		    PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
@@ -2125,35 +2266,15 @@ void ProcessRadio(void) {
 		    PWMGenDisable(PWM0_BASE, PWM_GEN_0);
 		    PWMGenDisable(PWM0_BASE, PWM_GEN_1);
 		    PWMGenDisable(PWM0_BASE, PWM_GEN_2);
-
-		    //
-		    // Disable interrupts except for the radio and sensors.
-		    SysTickDisable();
-
-#if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
-            //
-            // Enable trajectory timer.
-            TimerDisable(UPDATE_TIMER, TIMER_B);
 #endif
 
 			break;
 		}
-#if DEBUG
-		default:
-		{
+		case 'A': {
 		    //
-		    // Print out some stuff for debugging.
-		    UARTprintf("Radio reached the default case in\r\n");
-		    UARTprintf("the ProcessRadio function.\r\n");
-
-		    while(1)
-		    {
-		        //
-		        // Loop doing nothing, til this problem is solved.
-		    }
-
+		    // Do nothing, since the system is already armed.
+		    break;
 		}
-#endif
 		}
 	} else { // Arm the System.
 		switch (g_sRxPack.ui8Data[3]) {
@@ -2167,10 +2288,6 @@ void ProcessRadio(void) {
 		}
 		}
 	}
-
-	//
-	// Reset the flag.
-	g_RadioFlag = false;
 }
 
 //*****************************************************************************
@@ -2273,7 +2390,7 @@ void SendPacket(void) {
 
 		//
 		// Mode of operation.
-		if (sStatus.bFlyOrDrive) {
+		if (sStatus.ui8Mode == 'F') { // flying
 			g_Pack.pack.movement = 'F';
 			g_Pack.pack.amtr1 = true;
 			g_Pack.pack.amtr2 = true;
@@ -2281,10 +2398,19 @@ void SendPacket(void) {
 			g_Pack.pack.amtr4 = true;
 			g_Pack.pack.gndmtr1 = false;
 			g_Pack.pack.gndmtr2 = false;
-		} else {
+		} else if (sStatus.ui8Mode == 'D') { // driving
 			g_Pack.pack.movement = 'D';
 			g_Pack.pack.gndmtr1 = true;
 			g_Pack.pack.gndmtr2 = true;
+			g_Pack.pack.amtr1 = false;
+			g_Pack.pack.amtr2 = false;
+			g_Pack.pack.amtr3 = false;
+			g_Pack.pack.amtr4 = false;
+		}
+		else { // autonomous
+			g_Pack.pack.movement = 'D';
+			g_Pack.pack.gndmtr1 = false;
+			g_Pack.pack.gndmtr2 = false;
 			g_Pack.pack.amtr1 = false;
 			g_Pack.pack.amtr2 = false;
 			g_Pack.pack.amtr3 = false;
@@ -2300,6 +2426,7 @@ void SendPacket(void) {
 		g_Pack.pack.uS5 = false;
 		g_Pack.pack.uS6 = false;
 		g_Pack.pack.payBay = sStatus.bPayDeployed;
+		g_Pack.pack.sysArmed = sStatus.bArmed;
 
 		//
 		// Send the data over the radio.
@@ -2514,6 +2641,10 @@ void WaitForArming(void)
 {
 	TurnOnLED(5);
 
+	SysTickDisable();
+
+    sStatus.bRadioConnected = false;
+
 	while (!sStatus.bArmed) {
 		if (WaitForButtonPress(LEFT_BUTTON))
 				sStatus.bArmed = true;
@@ -2542,623 +2673,3 @@ void WaitForArming(void)
 
 }
 
-//*****************************************************************************
-//
-// This function will update the trajectory of the platform.
-//
-//*****************************************************************************
-void AutoFlyUpdate(void) {
-    uint32_t ui32Status;
-
-    //
-    // Get the interrupt status.
-    ui32Status = TimerIntStatus(UPDATE_TIMER, true);
-
-    //
-    // Clear the interrupt.
-    TimerIntClear(UPDATE_TIMER, ui32Status);
-
-/*
-	float fXdotDes;
-	float fYdotDes;
-	float fZdotDes;
-	float fXdotdotDes;
-	float fYdotdotDes;
-	float fZdotdotDes;
-	float fXdotCurrent;
-	float fYdotCurrent;
-	float fZdotCurrent;
-	float fKpX;
-	float fKpY;
-	float fKpZ;
-	float fKdX;
-	float fKdY;
-	float fKdZ;
-	float fKpR;
-	float fKpP;
-	float fKpYa;
-	float fKdR;
-	float fKdP;
-	float fKdYa;
-	float fFx;
-	float fFy;
-	float fFz;
-	float fFzSat;
-	float fFMax;
-	float fThrust;
-	float fRollDes;
-	float fPitchDes;
-	float fYawDes;
-	float fRolldotDes;
-	float fPitchdotDes;
-	float fYawdotDes;
-	float fRolldotdotDes;
-	float fPitchdotdotDes;
-	float fYawdotdotDes;
-	float fMatThdotdot[3];
-	float fMatBinv[4][4];
-	float fMatTorque[4];
-	float fThrustDes[4];
-
-	//
-	// TODO: This is where the control law and stuff will go.
-	//
-	// Check if radio is sending good data.
-	if (sStatus.bTargetSet) {
-		//
-		// Radio data is good, calculate a trajectory.
-
-		//
-		// TODO: Calculate a trajectory.
-		sStatus.fRoll = sAttData.fRoll;
-		sStatus.fPitch = sAttData.fPitch;
-		sStatus.fYaw = sAttData.fYaw;
-		if (sSensStatus.fThrust ==0){
-		StaticUpdateAttitude(&sAttData);
-		}else{
-		DynamicUpdateAttitude(&sAttData);
-		}
-		sAttData.fRoll = sStatus.fRoll;
-		sAttData.fPitch = sStatus.fPitch;
-		sAttData.fYaw = sStatus.fYaw;
-		if ((sStatus.fCurrentAlt > sStatus.fTargetAlt) && (sStatus.fCurrentAlt - sStatus.fTargetAlt > 0.03)) {
-				sStatus.fTargetAlt = sStatus.fCurrentAlt - 0.03;
-		}
-
-		fKpX = 0.1;
-		fKpY = 1;
-		fKpZ = 0.075;
-
-		fXdotDes = (sStatus.fCurrentLat - sStatus.fTargetLat) * (111.2 / 0.001) * fKpX; //Each 0.001 degrees of latitude equates to 111.2 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
-		fYdotDes = (sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) * fKpY; //Each 0.001 degrees of latitude equates to 91.51 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
-		fZdotDes = (-sStatus.fCurrentAlt - -sStatus.fTargetAlt) * fKpZ;
-
-		fXdotCurrent = sSensStatus.fPrevVelX + (DT * sSensStatus.fPreviousAccelX);
-		sSensStatus.fPrevVelX = fXdotCurrent;
-		fYdotCurrent = sSensStatus.fPrevVelY + (DT * sSensStatus.fPreviousAccelY);
-		sSensStatus.fPrevVelY = fYdotCurrent;
-		fZdotCurrent = sSensStatus.fPrevVelZ + (DT * sSensStatus.fPreviousAccelZ);
-		sSensStatus.fPrevVelZ = fZdotCurrent;
-
-		fKdX = 1;
-		fKdY = 1;
-		fKdZ = 2;
-
-		fXdotdotDes = (fXdotDes - fXdotCurrent) * fKdX;
-		fYdotdotDes = (fYdotDes - fYdotCurrent) * fKdY;
-		fZdotdotDes = (fZdotDes - fZdotCurrent) * fKdZ;
-
-		fFx = fXdotdotDes * sStatus.fMass;
-		fFy = fYdotdotDes * sStatus.fMass;
-		fFz = fZdotdotDes * sStatus.fMass;
-		fFMax = 238.3101;
-
-		if (fFz>fFMax){
-			fFzSat = fFMax;
-		}else if (fFz<-9.8*sStatus.fMass){
-			fFzSat = -9.8*sStatus.fMass;
-		}else{
-			fFzSat = fFz;
-		}
-
-		fRollDes = fFy / sSensStatus.fThrust;
-		fPitchDes = -fFx / sSensStatus.fThrust;
-		fYawDes = 0;
-
-		fKpR = 2.09974943882214;
-		fKpP = 2.09974943882214;
-		fKpYa = 2.09974943882214;
-
-		fRolldotDes = (fRollDes - sStatus.fRoll) * fKpR;
-		fPitchdotDes = (fPitchDes - sStatus.fPitch) * fKpP;
-		fYawdotDes = (fYawDes - sStatus.fYaw) * fKpYa;
-
-		fKdR = 4;
-		fKdP = 4;
-		fKdYa = 4;
-
-		fRolldotdotDes = (fRolldotDes - sSensStatus.fCurrentGyroX) * fKdR;
-		fPitchdotdotDes = (fPitchdotDes - sSensStatus.fCurrentGyroY) * fKdP;
-		fYawdotdotDes = (fYawdotDes - sSensStatus.fCurrentGyroZ) * fKdYa;
-
-// This matrix math is definitely wrong.
-		fMatThdotdot[0] = fRolldotdotDes;
-		fMatThdotdot[1] = fPitchdotdotDes;
-		fMatThdotdot[2] = fYawdotdotDes;
-		fMatTorque[0] = fMatI[0][0] * fMatThdotdot[0] + fMatI[0][1] * fMatThdotdot[1] + fMatI[0][2] * fMatThdotdot[2];
-		fMatTorque[1] = fMatI[1][0] * fMatThdotdot[0] + fMatI[1][1] * fMatThdotdot[1] + fMatI[1][2] * fMatThdotdot[2];
-		fMatTorque[2] = fMatI[2][0] * fMatThdotdot[0] + fMatI[2][1] * fMatThdotdot[1] + fMatI[2][2] * fMatThdotdot[2];
-		fMatTorque[3] = fFzSat;
-
-		fThrustDes[0] = fBinx[0][0] * fMatThdotdot[0] + fBinv[0][1] * fMatThdotdot[1] + fBinv[0][2] * fMatThdotdot[2] + Binv[0][3] * fMatThdotdot[3];
-		fThrustDes[1] = fBinx[1][0] * fMatThdotdot[0] + fBinv[1][1] * fMatThdotdot[1] + fBinv[1][2] * fMatThdotdot[2] + Binv[1][3] * fMatThdotdot[3];
-		fThrustDes[2] = fBinx[2][0] * fMatThdotdot[0] + fBinv[2][1] * fMatThdotdot[1] + fBinv[2][2] * fMatThdotdot[2] + Binv[2][3] * fMatThdotdot[3];
-		fThrustDes[3] = fBinx[3][0] * fMatThdotdot[0] + fBinv[3][1] * fMatThdotdot[1] + fBinv[3][2] * fMatThdotdot[2] + Binv[3][3] * fMatThdotdot[3];
-		sSensStatus.fThrust = fThrustDes[0] + fThrustDes[1] + fThrustDes[2] + fThrustDes[3];
-	} else {
-		//
-		// Radio data is bad. Set the current location as the target location.
-		sStatus.fTempTargetLat = sStatus.fCurrentLat;
-		sStatus.fTempTargetLong = sStatus.fCurrentLong;
-
-		//
-		// TODO: Add some logic, so that if we lose radio contact, we
-		// don't necessarily crash...
-	} */
-
-	TurnOffLED(5);
-	TurnOnLED(2);
-
-#if DEBUG
-	//
-	// Reset printing loop count for debugging.
-	g_PrintFlag = false;
-#endif
-}
-
-//*****************************************************************************
-//
-// This function will update the trajectory of the platform in autonomous mode
-// and driving.
-//
-//*****************************************************************************
-void AutoDriveUpdate(void)
-{
-    uint32_t ui32Status;
-
-    //
-    // Get the interrupt status.
-    ui32Status = TimerIntStatus(UPDATE_TIMER, true);
-
-    //
-    // Clear the interrupt.
-    TimerIntClear(UPDATE_TIMER, ui32Status);
-
-	//
-	// TODO: This is where the control law and stuff will go.
-	//
-	// Check if radio is sending good data.
-	/*
-	float fXdotDes;
-	float fYdotDes;
-	float fKpR;
-	float fXdotCurrent;
-	float fYdotCurrent;
-	float fXdotdotDes;
-	float fKdR;
-	float fThDes;
-	float fThdotDes;
-	float fKpTh;
-	float fThdotdotDes;
-	float fKdTh;
-	float fRadiusWheel;
-	float fKt;
-	float fResistanceMotor;
-	float fVoltLeft;
-	float fVoltRight;
-		
-	if (sStatus.bTargetSet) {
-		//
-		// Radio data is good, calculate a trajectory.
-		fKpR = 0.08;
-		fXdotDes = (sStatus.fCurrentLat - sStatus.fTargetLat) * (111.2 / 0.001) * fKpR; //Each 0.001 degrees of latitude equates to 111.2 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
-		fYdotDes = (sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) * fKpR; //Each 0.001 degrees of latitude equates to 91.51 meters in Embry-Riddle Aereonatical University, Prescott AZ, Lowwer Fields
-		fXdotCurrent = sSensStatus.fPrevVelX + (DT * sSensStatus.fPreviousAccelX); //Are Accelerations im body or imirtia; frame, Inirtial was assumed
-		sSensStatus.fPrevVelX = fXdotCurrent;
-		fYdotCurrent = sSensStatus.fPrevVelY + (DT * sSensStatus.fPreviousAccelY);
-		sSensStatus.fPrevVelY = fYdotCurrent;
-		fKdR = 10;
-		fXdotdotDes = (fXdotDes - fXdotCurrent) * fKdR;
-		if ((sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) > 2.5 && (sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001) < -2.5){
-			fThDes = atan(((sStatus.fCurrentLat - sStatus.fTargetLat) * (111.2 / 0.001)) / ((sStatus.fCurrentLong - sStatus.fTargetLong) * (91.51 / 0.001)));
-			fKpTh = 0.8;
-			fThdotDes = (fThdes - sStatus.fYaw) * fKpTh;
-			fKdTh = 3;
-			fThdotdotDes = (fThdotDes - sSensStatus.fCurrentGyroZ) * fKdTh;
-		}else{
-			fRadiusWheel = ;
-			fKt = ;
-			fResistanceMotor = ;
-			fVoltLeft = (((fXdotdotDes / (2 * sStatus.fMass)) * fRadiusWheel) / fKt) * fResistanceMotor;
-		}
-		
-	} else {
-		//
-		// Radio data is bad. Set the current location as the target location.
-		sStatus.fTempTargetLat = sStatus.fCurrentLat;
-		sStatus.fTempTargetLong = sStatus.fCurrentLong;
-
-		//
-		// TODO: Add some logic, so that if we lose radio contact, we
-		// don't necessarily crash...
-	}
-	*/
-
-	//
-	// Set the ground motors to zero throttle.
-	//
-	uint8_t txBuffer[4];
-
-    // Build the instruction packet.
-    txBuffer[0] = RX24_WRITE_DATA;
-    txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
-    txBuffer[2] = 0x00;
-    txBuffer[3] = 0x00;
-
-    //
-    // Send the command to the LW motor.
-    Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION, 4,
-            txBuffer);
-
-    //
-    // Send the command to the RW motor.
-    Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
-            txBuffer);
-
-    TurnOffLED(5);
-    TurnOnLED(3);
-
-#if DEBUG
-	//
-	// Reset printing loop count for debugging.
-	g_PrintFlag = false;
-#endif
-}
-
-//*****************************************************************************
-//
-// This function will update the trajectory of the platform in manual mode
-// and flying.
-//
-//*****************************************************************************
-void ManualFlyUpdate(void)
-{
-	uint32_t ui32Status;
-
-	//
-	// Get the interrupt status.
-	ui32Status = TimerIntStatus(UPDATE_TIMER, true);
-
-	//
-	// Clear the interrupt.
-	TimerIntClear(UPDATE_TIMER, ui32Status);
-/*
-	float fDesiredRoll = 0.0f;
-	float fDesiredPitch = 0.0f;
-	//
-	// TODO: Figure out a good yaw rate.
-
-	//
-	// We are flying. Set the parameters sent from the radio.
-	// Get the throttle.
-	int32_t ui32Throttle = (int32_t) (g_sRxPack.sControlPacket.throttle);
-
-#if DEBUG
-	UARTprintf("Throttle: %d\r\n", ui32Throttle);
-#endif
-
-	//
-	// Check to make sure throttle isn't negative.
-	if (ui32Throttle < 0)
-		ui32Throttle = 0;
-
-	sThrottle.fAirMtr1Throttle = (ui32Throttle
-			* g_ui32ThrottleIncrement) + ZEROTHROTTLE;//HOVERTHROTTLE1;
-	sThrottle.fAirMtr2Throttle = (ui32Throttle
-			* g_ui32ThrottleIncrement) + ZEROTHROTTLE;//HOVERTHROTTLE2;
-	sThrottle.fAirMtr3Throttle = (ui32Throttle
-			* g_ui32ThrottleIncrement) + ZEROTHROTTLE;//HOVERTHROTTLE3;
-	sThrottle.fAirMtr4Throttle = (ui32Throttle
-			* g_ui32ThrottleIncrement) + ZEROTHROTTLE;//HOVERTHROTTLE4;
-
-		//
-		// Get the yaw value.
-		int32_t i32Yaw = (int32_t) (g_sRxPack.sControlPacket.yaw);
-#if DEBUG
-		//
-		// Get the roll, pitch, yaw for printing to the console.
-		int32_t i32Roll = (int32_t) (g_sRxPack.sControlPacket.roll) * 25
-				/ 100;
-		int32_t i32Pitch = (int32_t) (g_sRxPack.sControlPacket.pitch
-				* 25 / 100);
-
-		if (g_PrintFlag) {
-			UARTprintf("Throttle: %d\r\n", ui32Throttle);
-			UARTprintf(
-					"Desired Roll: %d\r\nDesired Pitch: %d\r\nYaw: %d\r\n",
-					i32Roll, i32Pitch, i32Yaw);
-		}
-#endif
-		//
-		// Calculate the roll, pitch and yaw.
-		fDesiredRoll = g_sRxPack.sControlPacket.roll / 100.0f * 25.0f;
-		fDesiredPitch = g_sRxPack.sControlPacket.pitch / 100.0f * 25.0f; */
-/*
-		//
-		// Check if the pitch error is less than 0.5 or -0.5.
-		if (((sStatus.fPitch - fDesiredPitch) > 0.5f)
-				|| ((sStatus.fPitch - fDesiredPitch) < -0.5f)) {
-			//
-			// Check the pitch.
-			// Pitch is less than desired and negative.
-			if ((sStatus.fPitch < fDesiredPitch)
-					&& (sStatus.fPitch < 0)) {
-#if APOPHIS
-				//
-				// "Pull Up", increase front motor throttle and decrease back motor throttle.
-				sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr3Throttle -= g_ui32ThrottleIncrement;
-#else
-				sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr3Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr4Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr6Throttle += g_ui32ThrottleIncrement;
-#endif
-				if (g_PrintFlag) {
-					UARTprintf("Neg Pitch and Pull Up\r\n");
-				}
-			}
-			//
-			// Pitch is greater than desired and negative.
-			else if ((sStatus.fPitch > fDesiredPitch)
-					&& (sStatus.fPitch < 0)) {
-#if APOPHIS
-				//
-				// "Pull Down", decrease front motor throttle and increase back motor throttle.
-				sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr3Throttle += g_ui32ThrottleIncrement;
-#else
-				sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr3Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr4Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr6Throttle -= g_ui32ThrottleIncrement;
-#endif
-				if (g_PrintFlag) {
-					UARTprintf("Neg Pitch and Pull Down\r\n");
-				}
-			}
-			//
-			// Pitch is less than desired and positive.
-			else if ((sStatus.fPitch < fDesiredPitch)
-					&& (sStatus.fPitch > 0)) {
-#if APOPHIS
-				//
-				// "Pull Up", increase front motor throttle and decrease back motor throttle.
-				sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr3Throttle -= g_ui32ThrottleIncrement;
-#else
-				sThrottle.fAirMtr1Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr3Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr4Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr6Throttle += g_ui32ThrottleIncrement;
-#endif
-				if (g_PrintFlag) {
-					UARTprintf("Pos Pitch and Pull Up\r\n");
-				}
-			}
-			//
-			// Pitch is greater than desired and positive.
-			else if ((sStatus.fPitch > fDesiredPitch)
-					&& (sStatus.fPitch > 0)) {
-#if APOPHIS
-				//
-				// "Pull Down", decrease front motor throttle and increase back motor throttle.
-				sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr3Throttle += g_ui32ThrottleIncrement;
-#else
-				sThrottle.fAirMtr1Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr3Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr4Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr6Throttle -= g_ui32ThrottleIncrement;
-#endif
-				if (g_PrintFlag) {
-					UARTprintf("Pos Pitch and Pull Down\r\n");
-				}
-			}
-		}
-
-		//
-		// Check if roll error is greater than 0.5 degrees.
-		if ((sStatus.fRoll - fDesiredRoll > 0.5f)
-				|| (sStatus.fRoll - fDesiredRoll < -0.5f)) {
-			//
-			// Check the roll.
-			// Roll is less than desired and negative.
-			if ((sStatus.fRoll < fDesiredRoll) && (sStatus.fRoll < 0)) {
-#if APOPHIS
-				//
-				// "Roll right", increase left motor throttle and decrease right motor throttle.
-				sThrottle.fAirMtr2Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr4Throttle += g_ui32ThrottleIncrement;
-#else
-				sThrottle.fAirMtr2Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr5Throttle += g_ui32ThrottleIncrement;
-#endif
-				if (g_PrintFlag) {
-					UARTprintf("Neg Roll and Roll Right\r\n");
-				}
-			}
-			//
-			// Roll is greater than desired and negative.
-			else if ((sStatus.fRoll > fDesiredRoll)
-					&& (sStatus.fRoll < 0)) {
-#if APOPHIS
-				//
-				// "Roll Left", increase right motor throttle and decrease left motor throttle.
-				sThrottle.fAirMtr2Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr4Throttle -= g_ui32ThrottleIncrement;
-#else
-				sThrottle.fAirMtr2Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr5Throttle -= g_ui32ThrottleIncrement;
-#endif
-				if (g_PrintFlag) {
-					UARTprintf("Neg Roll and Roll Left\r\n");
-				}
-			}
-			//
-			// Roll is less than desired and positive.
-			else if ((sStatus.fRoll < fDesiredRoll)
-					&& (sStatus.fRoll > 0)) {
-#if APOPHIS
-				//
-				// "Roll Right", increase left motor throttle and decrease right motor throttle.
-				sThrottle.fAirMtr2Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr4Throttle += g_ui32ThrottleIncrement;
-#else
-				sThrottle.fAirMtr2Throttle -= g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr5Throttle += g_ui32ThrottleIncrement;
-#endif
-				if (g_PrintFlag) {
-					UARTprintf("Pos Roll and Roll Right\r\n");
-				}
-			}
-
-			//
-			// Roll is greater than desired and positive.
-			else if ((sStatus.fRoll > fDesiredRoll)
-					&& (sStatus.fRoll > 0)) {
-#if APOPHIS
-				//
-				// "Roll Left", decrease left motor throttle and increase right motor throttle.
-				sThrottle.fAirMtr2Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr4Throttle -= g_ui32ThrottleIncrement;
-#else
-				sThrottle.fAirMtr2Throttle += g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr5Throttle -= g_ui32ThrottleIncrement;
-#endif
-				if (g_PrintFlag) {
-					UARTprintf("Pos Roll and Roll Left\r\n");
-				}
-			}
-
-			//
-			// TODO: Check yaw calculations.
-			if (i32Yaw == 1) {
-				//
-				// User is pressing right bumper. Rotate right (clockwise from above).
-				sThrottle.fAirMtr1Throttle += 5 * g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr3Throttle += 5 * g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr2Throttle -= 5 * g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr4Throttle -= 5 * g_ui32ThrottleIncrement;
-
-			} else if (i32Yaw == -1) {
-				//
-				// User is pressing left bumper. Rotate left (counter-clockwise from above).
-				sThrottle.fAirMtr1Throttle -= 5 * g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr3Throttle -= 5 * g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr2Throttle += 5 * g_ui32ThrottleIncrement;
-				sThrottle.fAirMtr4Throttle += 5 * g_ui32ThrottleIncrement;
-			}
-		}
-	} */
-
-	TurnOffLED(5);
-	TurnOnLED(4);
-
-	//
-	// Set the new throttles for the motors.
-	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1,
-			sThrottle.fAirMtr1Throttle);
-	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2,
-			sThrottle.fAirMtr2Throttle);
-	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3,
-			sThrottle.fAirMtr3Throttle);
-	PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4,
-			sThrottle.fAirMtr4Throttle);
-}
-
-//*****************************************************************************
-//
-// This function will update the trajectory of the platform in manual mode
-// and driving.
-//
-//*****************************************************************************
-void ManualDriveUpdate(void) {
-	uint32_t ui32Status;
-
-	//
-	// Get the interrupt status.
-	ui32Status = TimerIntStatus(UPDATE_TIMER, true);
-
-	//
-	// Clear the interrupt.
-	TimerIntClear(UPDATE_TIMER, ui32Status);
-
-	uint8_t txBuffer[4];
-
-	//
-	// Check the direction. For the LW, CCW is the forward direction.
-	if (g_ui32LWThrottle >= 0) {
-		//
-		// Rotate the wheel in the CCW direction. (0 - 1023)
-		sThrottle.ui16GndMtrLWThrottle = RX24_THROTTLE_INCREMENT
-				* g_ui32LWThrottle;
-	} else if (g_ui32LWThrottle < 0) {
-		//
-		// Rotate the wheel in the CW direction. (1024 - 2047).
-		sThrottle.ui16GndMtrLWThrottle = RX24_THROTTLE_INCREMENT
-				* (-g_ui32LWThrottle) + 1024;
-	}
-
-	//
-	// Check the RW direction. CW is forward direction.
-	if (g_ui32RWThrottle >= 0) {
-		//
-		// Rotate the wheel in the CW direction. (1024 - 2047)
-		sThrottle.ui16GndMtrRWThrottle = RX24_THROTTLE_INCREMENT
-				* g_ui32RWThrottle + 1024;
-	} else if (g_ui32RWThrottle < 0) {
-		//
-		// Rotate the wheel in the CCW direction. (0 - 1023).
-		sThrottle.ui16GndMtrRWThrottle = RX24_THROTTLE_INCREMENT
-				* (-g_ui32RWThrottle);
-	}
-
-	//
-	// Build the instruction packet.
-	txBuffer[0] = RX24_WRITE_DATA;
-	txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
-	txBuffer[2] = (uint8_t) (sThrottle.ui16GndMtrLWThrottle & 0x00ff);
-	txBuffer[3] = (uint8_t) (sThrottle.ui16GndMtrLWThrottle >> 8);
-
-	//
-	// Send the command to the LW motor.
-	Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION, 4,
-			txBuffer);
-
-	txBuffer[2] = (uint8_t) (sThrottle.ui16GndMtrRWThrottle & 0x00ff);
-	txBuffer[3] = (uint8_t) (sThrottle.ui16GndMtrRWThrottle >> 8);
-
-	//
-	// Send the command to the RW motor.
-	Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
-			txBuffer);
-
-#if DEBUG
-	if (g_PrintFlag) {
-		UARTprintf("Driving.\r\n");
-		UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", g_ui32RWThrottle,
-				g_ui32LWThrottle);
-	}
-#endif
-}

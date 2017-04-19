@@ -139,7 +139,7 @@
 
 /*
  * Radio Timer Defines
- * Timer 5 - Timer A will be used
+ * Timer 0 - Timer B will be used
  * to detect radio communication loss.
  * It will be run at 3 Hz, if it times out,
  * this will indicate that there is no radio
@@ -148,13 +148,13 @@
  * a radio packet send at the specified
  * frequency.
  */
-#define RADIO_TIMER_CHECK TIMER5_BASE
-#define RADIO_TIMER_CHECK_INT INT_TIMER5A
+#define RADIO_TIMER_CHECK TIMER4_BASE
+#define RADIO_TIMER_CHECK_INT INT_TIMER4A
 
 #define RADIO_TIMER TIMER0_BASE
 #define RADIO_TIMER_INT INT_TIMER0A
 #define RADIO_TIMER_RATE 2
-#define GS_RADIO_RATE 3
+#define GS_RADIO_RATE 1
 
 /*
  *  ADC Peripheral Defines for Solar Panels
@@ -234,33 +234,6 @@
 #define CAP_PIN_4 GPIO_PIN_7
 #define CAP_PIN_5 GPIO_PIN_3
 #define CAP_PIN_6 GPIO_PIN_2
-
-/*
- * Solenoid Enable Pins Peripheral Defines
- *
- * 2 Enable Pins
- * PM7, PP5
- * Must both be driven high at the same time
- * in order to activate the solenoids.
- *
- * To prevent excessive current loss, a timer
- * must be used to turn off the solenoid enable
- * pins after a set amount of time. We will be
- * using timer 4 for this purpose.
- */
-
-#define SOLENOID_PERIPH1 SYSCTL_PERIPH_GPIOM
-#define SOLENOID_PERIPH2 SYSCTL_PERIPH_GPIOP
-
-#define SOLENOID_GPIO_PORT1 GPIO_PORTM_BASE
-#define SOLENOID_GPIO_PORT2 GPIO_PORTP_BASE
-
-#define SOLENOID_PIN_1 GPIO_PIN_7
-#define SOLENOID_PIN_2 GPIO_PIN_5
-
-#define SOLENOID_TIMER_PERIPH SYSCTL_PERIPH_TIMER4
-#define SOLENOID_TIMER TIMER4_BASE
-#define SOLENOID_INT INT_TIMER4A
 
 /*
  * BOOSTXL-SENSORS Pin Peripheral Defines

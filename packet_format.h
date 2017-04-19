@@ -17,7 +17,7 @@
  */
 struct upacket {
     char Magic[3]; // padding for detecting start of packet.
-    char movement;  // Mode of Operation: Air or Ground? (F or D)(byte[64])
+    char movement;  // Mode of Operation: Air or Ground? (F or D)
 
     float UTC; // Current UTC
     float lat;  // Latitude of platform.
@@ -52,7 +52,8 @@ struct upacket {
     bool uS6;   // Obstacle detected on sensor 6?
 
     bool payBay;    // Has the payload been released?
-    char padding[3]; // More silly padding.
+    bool sysArmed;  // Is the system armed or disarmed?
+    char padding[2]; // More silly padding.
 }; // Size of the microcontroller packet is 84 bytes.
 
 /*
@@ -61,7 +62,7 @@ struct upacket {
  */
 typedef union {
     struct upacket pack;    // Structure as defined above.
-    char str[90]; // character addressing of same memory.
+    char str[85]; // character addressing of same memory.
 } uTxPack;
 
 /*
@@ -75,7 +76,7 @@ typedef struct {
     char type; // Target or Control command? T or C?
     float tLat; // Target latitude.
     float tLong;    // Target longitude.
-} tGSTPacket ; // Size of gstpacket is 9 bytes
+} tGSTPacket ; // Size of gstpacket is 12 bytes
 
 //
 // Control type packet. It will send
@@ -100,9 +101,9 @@ typedef struct  {
 typedef union {
     tGSTPacket sTargetPacket;   // Structure as defined above.
     tGSCPacket sControlPacket;   // Structure as defined above.
-    char ui8Data[4];
-    char ui8DataTarget[sizeof(tGSTPacket)];  // Same memory byte addressable.
-    char ui8DataControl[sizeof(tGSCPacket)];  // Same memory byte addressable.
+    uint8_t ui8Data[32];
+    uint8_t ui8DataTarget[sizeof(tGSTPacket)];  // Same memory byte addressable.
+    uint8_t ui8DataControl[sizeof(tGSCPacket)];  // Same memory byte addressable.
 } uRxPack;
 
 #endif /* PACKET_FORMAT_H_ */
