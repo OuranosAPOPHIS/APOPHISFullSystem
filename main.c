@@ -2,7 +2,7 @@
  * Project: Aerial Platform for Overland Haul and Import System (APOPHIS)
  *
  *  Created On: Jan 20, 2017
- *  Last Updated: April 17, 2017
+ *  Last Updated: April 18, 2017
  *      Author(s): Brandon Klefman
  *
  *      Purpose: Flight computer for the APOPHIS platform.
@@ -385,6 +385,8 @@ uint32_t g_ui32ServoEndPosition = 0;
 
 uint32_t g_ui32ServoAngle = 0;
 
+bool g_RadioDone = false;
+
 //*****************************************************************************
 //
 // Start of program.
@@ -716,6 +718,15 @@ int main(void) {
 		// Check if the system was disarmed.
 		if (!sStatus.bArmed)
 			WaitForArming();
+
+		if (g_RadioDone)
+		{
+		    int n;
+		    for (n = 0; n < sizeof(g_sRxPack.ui8Data); n++)
+		        UARTCharPut(CONSOLE_UART, g_sRxPack.ui8Data[n]);
+
+		    g_RadioDone = false;
+		}
 	}
 
 #if DEBUG
@@ -1074,11 +1085,6 @@ void RadioIntHandler(void)
 				//
 				// Target or Arm/Disarm packet.
 				if (ui8Index < sizeof(g_sRxPack.sTargetPacket)) {
-					if (ui8Index > 40)
-						while(1)
-							{
-								;;;
-							}
 					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
 					ui8Index++;
 				}
@@ -1093,6 +1099,13 @@ void RadioIntHandler(void)
 					ui8Magic[0] = 0;
 					ui8Index = 0;
 					bValidData = false;
+
+                    g_RadioDone = true;
+
+
+				    sStatus.bRadioConnected = true;
+				    TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
+				            16000000 / GS_RADIO_RATE);
 				}
 
 				break;
@@ -1102,11 +1115,6 @@ void RadioIntHandler(void)
 				//
 				// Control packet.
 				if(ui8Index < sizeof(g_sRxPack.sControlPacket)) {
-					if (ui8Index > 40)
-						while(1)
-							{
-								;;;
-							}
 
 					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
 					ui8Index++;
@@ -1471,73 +1479,6 @@ void RadioTimeoutIntHandler(void) {
 	// Set the new status of the platform.
 	sStatus.bRadioConnected = false;
 	sStatus.ui8Mode = 'A';
-}
-
-//*****************************************************************************
-//
-// Updates the DCM at a consistent rate of 25Hz.
-//
-//*****************************************************************************
-void DCMUpdateTimer(void) {
-	uint32_t ui32Status;
-
-	//
-	// Get the interrupt status.
-	ui32Status = TimerIntStatus(DCM_TIMER, true);
-
-	//
-	// Clear the interrupt.
-	TimerIntClear(DCM_TIMER, ui32Status);
-
-	//
-	// Check if this is the first time.
-	if (g_bDCMStarted == 0) {
-		//
-		// Start the DCM.
-		CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX,
-				g_Pack.pack.accelY, g_Pack.pack.accelZ);
-
-		CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1],
-				g_fGyroData[2]);
-
-		CompDCMMagnetoUpdate(&g_sCompDCMInst, g_fMagData[0], g_fMagData[1],
-				g_fMagData[2]);
-
-		CompDCMStart(&g_sCompDCMInst);
-
-		g_bDCMStarted = true;
-	} else {
-		//
-		// DCM is already started, just update it.
-		CompDCMAccelUpdate(&g_sCompDCMInst, g_Pack.pack.accelX,
-				g_Pack.pack.accelY, g_Pack.pack.accelZ);
-
-		CompDCMGyroUpdate(&g_sCompDCMInst, g_fGyroData[0], g_fGyroData[1],
-				g_fGyroData[2]);
-
-		CompDCMMagnetoUpdate(&g_sCompDCMInst, g_fMagData[0], g_fMagData[1],
-				g_fMagData[2]);
-
-		CompDCMUpdate(&g_sCompDCMInst);
-	}
-
-	//
-	// Get the Euler angles.
-	CompDCMComputeEulers(&g_sCompDCMInst, &sStatus.fRoll, &sStatus.fPitch,
-			&sStatus.fYaw);
-
-	//
-	// Flip the roll axis. Positive is roll right.
-	sStatus.fRoll *= -1;
-
-	//
-	// Convert Eulers to degrees. 180/PI = 57.29...
-	// Convert Yaw to 0 to 360 to approximate compass headings.
-	sStatus.fRoll *= 57.295779513082320876798154814105f;
-	sStatus.fPitch *= 57.295779513082320876798154814105f;
-	sStatus.fYaw *= 57.295779513082320876798154814105f;
-	if (sStatus.fYaw < 0)
-		sStatus.fYaw += 360.0f;
 }
 
 //*****************************************************************************

@@ -154,7 +154,7 @@
 #define RADIO_TIMER TIMER0_BASE
 #define RADIO_TIMER_INT INT_TIMER0A
 #define RADIO_TIMER_RATE 2
-#define GS_RADIO_RATE 3
+#define GS_RADIO_RATE 1
 
 /*
  *  ADC Peripheral Defines for Solar Panels

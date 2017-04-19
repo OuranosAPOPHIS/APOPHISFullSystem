@@ -68,7 +68,6 @@ extern void BMI160IntHandler(void);
 extern void BME280IntHandler(void);
 extern void SendPacket(void);
 extern void RadioTimeoutIntHandler(void);
-extern void DCMUpdateTimer(void);
 extern void MMA8452QIntHandler(void);
 
 /*
@@ -166,8 +165,8 @@ void InitRadio(void) {
 	GPIOPinTypeUART(RADIO_PORT, RADIO_PINRX | RADIO_PINTX);
 
 	//
-	// Configure UART6 for 57600, 8-N-1 operation.
-	UARTConfigSetExpClk(RADIO_UART, SYSCLOCKSPEED, 57600,
+	// Configure UART6 for 115200 (default is 57600), 8-N-1 operation.
+	UARTConfigSetExpClk(RADIO_UART, SYSCLOCKSPEED, 115200,
 			(UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
 			UART_CONFIG_PAR_NONE));
 
@@ -639,7 +638,7 @@ void InitIMU(uint8_t *offsetCompensation) {
 	TimerIntClear(DCM_TIMER, TIMER_TIMA_TIMEOUT);
 	TimerIntEnable(DCM_TIMER, TIMER_TIMA_TIMEOUT);
 	IntEnable(DCM_TIMER_INT);
-	TimerIntRegister(DCM_TIMER, TIMER_A, DCMUpdateTimer);
+	//TimerIntRegister(DCM_TIMER, TIMER_A, DCMUpdateTimer);
 
 
 	//
