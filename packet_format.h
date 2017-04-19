@@ -52,7 +52,8 @@ struct upacket {
     bool uS6;   // Obstacle detected on sensor 6?
 
     bool payBay;    // Has the payload been released?
-    char padding[3]; // More silly padding.
+    bool sysArmed;  // Is the system armed or disarmed?
+    char padding[2]; // More silly padding.
 }; // Size of the microcontroller packet is 84 bytes.
 
 /*

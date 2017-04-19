@@ -67,8 +67,11 @@ extern void Timer1BInterrupt(void);
 extern void BMI160IntHandler(void);
 extern void BME280IntHandler(void);
 extern void SendPacket(void);
-extern void RadioTimeoutIntHandler(void);
+//extern void RadioTimeoutIntHandler(void);
 extern void MMA8452QIntHandler(void);
+extern void AutoDriveUpdate(void);
+extern void AutoFlyUpdate(void);
+extern void ManualFlyUpdate(void);
 
 /*
  * LED Initialization function.
@@ -178,7 +181,7 @@ void InitRadio(void) {
 
 	//
 	// Set up a timer, to detect when radio signal is lost.
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER5);
+	//SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 
 	//
@@ -194,12 +197,13 @@ void InitRadio(void) {
 	IntEnable(RADIO_TIMER_INT);
 	TimerIntRegister(RADIO_TIMER, TIMER_A, SendPacket);
 
+#if false
 	//
 	// Configure the timer for radio timeout.
 	// This will detect loss of radio communication.
-	TimerClockSourceSet(RADIO_TIMER_CHECK, TIMER_CLOCK_PIOSC);
-	TimerConfigure(RADIO_TIMER_CHECK, TIMER_CFG_PERIODIC);
-	TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, CLOCK_PIOSC / GS_RADIO_RATE);
+    TimerClockSourceSet(RADIO_TIMER_CHECK, TIMER_CLOCK_PIOSC);
+    TimerConfigure(RADIO_TIMER_CHECK, TIMER_CFG_PERIODIC);
+    TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, 16000000 / GS_RADIO_RATE);
 
 	//
 	// Configure the interrupts for the timer.
@@ -207,6 +211,7 @@ void InitRadio(void) {
 	TimerIntEnable(RADIO_TIMER_CHECK, TIMER_TIMA_TIMEOUT);
 	IntEnable(RADIO_TIMER_CHECK_INT);
 	TimerIntRegister(RADIO_TIMER_CHECK, TIMER_A, RadioTimeoutIntHandler);
+#endif
 
 #if DEBUG
 	//
@@ -835,7 +840,7 @@ void InitSecondaryAccel(void) {
 
 	//
 	// Enable and register the function for the interrupt.
-	GPIOIntRegister(MMA8452Q_GPIO_INT_PORT, MMA8452QIntHandler);
+	//GPIOIntRegister(MMA8452Q_GPIO_INT_PORT, MMA8452QIntHandler);
 	GPIOIntEnable(MMA8452Q_GPIO_INT_PORT, BOOST_GPIO_INT);
 
 	//
@@ -857,7 +862,7 @@ void InitSecondaryAccel(void) {
 
 	//
 	// Initialize the MMA8452Q to have a 50Hz update and +/- 2g range.
-	InitMMA8452Q(MMA8452Q_I2C, MMA8452Q_RATE_2G, MMA8452Q_50_HZ);
+	//InitMMA8452Q(MMA8452Q_I2C, MMA8452Q_RATE_2G, MMA8452Q_50_HZ);
 
 	//
 	// Turn off interrupts, since I2CWrite turns them on.

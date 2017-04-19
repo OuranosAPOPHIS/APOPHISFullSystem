@@ -100,7 +100,7 @@ void Timer1BInterrupt(void);
 void SolenoidInterrupt(void);
 void BMI160IntHandler(void);
 void BME280IntHandler(void);
-void RadioTimeoutIntHandler(void);
+//void RadioTimeoutIntHandler(void);
 void TurnOnLED(uint32_t LEDNum);
 void TurnOffLED(uint32_t LEDNum);
 void Menu(char CharReceived);
@@ -125,6 +125,8 @@ bool bValidData = false;
 uint8_t ui8Magic[4] = { 0 };
 uint8_t ui8Index = 0;
 uint32_t MaxIndex = 0;
+
+bool g_RadioFlag = false;
 
 //*****************************************************************************
 //
@@ -158,7 +160,7 @@ typedef struct {
 } SystemStatus;
 
 //
-// Structure for all of the sensor values. 
+// Structure for all of the sensor values.
 typedef struct {
 	float fCurrentAccelX;		// Current Acceleration in X direction
 	float fCurrentAccelY;		// Current Acceleration in Y direction
@@ -206,6 +208,10 @@ SensorStatus sSensStatus;
 //
 // Throttle values for the air motors.
 uint32_t g_ui32ThrottleIncrement = 0;
+
+//
+// Radio connected flag which is triggered by ProcessRadio();
+bool g_bRadioFlag = false;
 
 //*****************************************************************************
 //
@@ -614,7 +620,9 @@ int main(void) {
    //
    // Activate the radio timers.
    TimerEnable(RADIO_TIMER, TIMER_A);
+#if false
    TimerEnable(RADIO_TIMER_CHECK, TIMER_A);
+#endif
 #endif
 
    //
@@ -718,15 +726,6 @@ int main(void) {
 		// Check if the system was disarmed.
 		if (!sStatus.bArmed)
 			WaitForArming();
-
-		if (g_RadioDone)
-		{
-		    int n;
-		    for (n = 0; n < sizeof(g_sRxPack.ui8Data); n++)
-		        UARTCharPut(CONSOLE_UART, g_sRxPack.ui8Data[n]);
-
-		    g_RadioDone = false;
-		}
 	}
 
 #if DEBUG
@@ -969,7 +968,7 @@ void SysTickIntHandler(void) {
             break;
 	}
 	}
-	
+
     //
     // Blink LED 4 once per second.
     if (g_SysTickCount >= (UPDATE_TRAJECTORY_RATE / 2))
@@ -988,6 +987,52 @@ void SysTickIntHandler(void) {
 
 			g_LED4On = true;
 		}
+
+        //
+        // Also, check if we still have a radio connection.
+        if (!g_bRadioFlag) {
+            sStatus.ui8Mode = 'A';
+            sStatus.bArmed = false;
+
+#if GNDMTRS_ACTVIATED
+            //
+            // Set the ground motors to zero throttle.
+            uint8_t txBuffer[4];
+
+            // Build the instruction packet.
+            txBuffer[0] = RX24_WRITE_DATA;
+            txBuffer[1] = RX24_REG_MOVING_VEL_LSB;
+            txBuffer[2] = 0x00;
+            txBuffer[3] = 0x00;
+
+            //
+            // Send the command to the LW motor.
+            Rx24FWrite(GNDMTR1_UART, GNDMTR1_DIRECTION_PORT, GMDMTR1_DIRECTION, 4,
+                    txBuffer);
+
+            //
+            // Send the command to the RW motor.
+            Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
+                    txBuffer);
+#endif
+
+#if AIRMTRS_ACTIVATED
+            //
+            // Set the air motors to zero throttle and disable the generators.
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_1, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, ZEROTHROTTLE);
+            PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, ZEROTHROTTLE);
+
+            PWMGenDisable(PWM0_BASE, PWM_GEN_0);
+            PWMGenDisable(PWM0_BASE, PWM_GEN_1);
+            PWMGenDisable(PWM0_BASE, PWM_GEN_2);
+#endif
+        }
+
+        //
+        // Reset the flag.
+        g_bRadioFlag = false;
 
 #if DEBUG
 		//
@@ -1033,110 +1078,55 @@ void ConsoleIntHandler(void) {
 //*****************************************************************************
 void RadioIntHandler(void)
 {
-	int32_t i32RxChar;
 
-	//
-	// Clear the interrupt.
-	uint32_t ui32Status = UARTIntStatus(RADIO_UART, true);
-	UARTIntClear(RADIO_UART, ui32Status);
+    // TODO: wtf magic!?
 
-	while (UARTCharsAvail(RADIO_UART))
-	{
-		if (ui8Index > MaxIndex)
-			MaxIndex = ui8Index;
+    static uint8_t ui8Index = 0;
+    static uint8_t ui8Magic[4] = {0};
+    static uint8_t ui8MagicCount;
+    static bool bValidData = false;
+    int32_t i32RxChar;
 
-		//
-		// Get the character from the Radio.
-		i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
+    //
+    // Get the interrupt status and clear the associated interrupt.
+    uint32_t ui32Status = UARTIntStatus(RADIO_UART, true);
+    UARTIntClear(RADIO_UART, ui32Status);
 
-		//
-		// Find the magic packet if the data is not valid.
-		if (!bValidData) {
-			ui8Magic[ui8Index % 4] = (uint8_t) i32RxChar;
-			ui8Index = (ui8Index + 1) % 4;
+    //
+    // Get the character received and send it to the console.
+    while(UARTCharsAvail(RADIO_UART))
+    {
+        i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
+        if (ui8Index >= (sizeof(uRxPack))) ui8Index = 0;
+        if (i32RxChar != -1) {
+            if (bValidData) {
+                //
+                // Get the chars over the UART.
+                g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
+                if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0' || g_sRxPack.ui8Data[3] == 'A' || g_sRxPack.ui8Data[3] == 'D') && ui8Index >= sizeof(tGSTPacket)) || (g_sRxPack.ui8Data[3] == 'C' && ui8Index >= sizeof(tGSCPacket))) {
+                    ui8Index = 0;
+                    bValidData = false;
 
-			if ((ui8Magic[(ui8Index) % 4] == 0xFF)
-					&& (ui8Magic[(ui8Index + 1) % 4] == 0xFF)
-					&& (ui8Magic[(ui8Index + 2) % 4] == 0xFF)
-					&& ((ui8Magic[(ui8Index + 3) % 4] == 'C')
-							|| (ui8Magic[(ui8Index + 3) % 4] == 'T')
-							|| (ui8Magic[(ui8Index + 3) % 4] == '0')
-							|| (ui8Magic[(ui8Index + 3) % 4] == 'A')
-							|| (ui8Magic[(ui8Index + 3) % 4] == 'D'))) {
+                    ProcessRadio();
 
-				//
-				// Found the magic packet.
-				bValidData = true;
-
-				g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index + 3) % 4];
-				ui8Index = 4;
-			}
-		}
-		else {
-			//
-			// Found the magic packet. Process the remaining string.
-			switch (g_sRxPack.ui8Data[3])
-			{
-			case 'T':
-			case '0':
-			case 'A':
-			case 'D':
-			{
-				//
-				// Target or Arm/Disarm packet.
-				if (ui8Index < sizeof(g_sRxPack.sTargetPacket)) {
-					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
-					ui8Index++;
-				}
-				else {
-
-					//
-					// Finished the packet. Do the processing.
-					ProcessRadio();
-
-					//
-					// Reset the globals.
-					ui8Magic[0] = 0;
-					ui8Index = 0;
-					bValidData = false;
-
-                    g_RadioDone = true;
-
-
-				    sStatus.bRadioConnected = true;
-				    TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
-				            16000000 / GS_RADIO_RATE);
-				}
-
-				break;
-			}
-			case 'C':
-			{
-				//
-				// Control packet.
-				if(ui8Index < sizeof(g_sRxPack.sControlPacket)) {
-
-					g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
-					ui8Index++;
-				}
-				else {
-
-					//
-					// Finished the packet. Do the processing.
-					ProcessRadio();
-
-					//
-					// Reset the globals.
-					ui8Magic[0] = 0;
-					ui8Index = 0;
-					bValidData = false;
-
-				}
-				break;
-			}
-			}
-		}
-	}
+                    break;
+                }
+            } else {
+                ui8Magic[ui8Index] = (uint8_t) i32RxChar;
+                ui8Index = (ui8Index + 1) % 4;
+                if (ui8MagicCount >= 3) {
+                    if (ui8Magic[ui8Index % 4] == 0xFF && ui8Magic[(ui8Index+1) % 4] == 0xFF && ui8Magic[(ui8Index+2) % 4] == 0xFF && (ui8Magic[(ui8Index+3) % 4] == 'T' || ui8Magic[(ui8Index+3) % 4] == 'C' || ui8Magic[(ui8Index+3) % 4] == '0' || ui8Magic[(ui8Index+3) % 4] == 'A' || ui8Magic[(ui8Index+3) % 4] == 'D')) {
+                        g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index+3) % 4];
+                        ui8Index = 4;
+                        bValidData = true;
+                        ui8MagicCount = 0;
+                    }
+                } else {
+                    ui8MagicCount++;
+                }
+            }
+        }
+    }
 }
 
 //*****************************************************************************
@@ -1464,6 +1454,7 @@ void BME280IntHandler(void) {
 // communication.
 //
 //*****************************************************************************
+#if false
 void RadioTimeoutIntHandler(void) {
 	uint32_t ui32Status;
 
@@ -1480,6 +1471,7 @@ void RadioTimeoutIntHandler(void) {
 	sStatus.bRadioConnected = false;
 	sStatus.ui8Mode = 'A';
 }
+#endif
 
 //*****************************************************************************
 //
@@ -2141,12 +2133,14 @@ void ProcessGPS(void) {
 //
 //*****************************************************************************
 void ProcessRadio(void) {
-	//
+    //
 	// Good radio connection. Reset the timer and set the status.
 	sStatus.bRadioConnected = true;
-	TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
-			16000000 / GS_RADIO_RATE);
+	g_bRadioFlag = true;
 
+#if false // Broken stuff.
+	//TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A, 16000000 / GS_RADIO_RATE);
+#endif
 
 	if (sStatus.bArmed) { // Don't mess with any system states until the system is armed.
 		switch (g_sRxPack.ui8Data[3]) {
@@ -2190,7 +2184,7 @@ void ProcessRadio(void) {
 				    //
 				    // Set the system status to flying.
 				    sStatus.ui8Mode = 'F';
-					
+
 				    //
 				    // Get the throttle for all of the motors.
 				    sThrottle.ui32AirMtrThrottle = g_sRxPack.sControlPacket.throttle;
@@ -2274,34 +2268,13 @@ void ProcessRadio(void) {
 		    PWMGenDisable(PWM0_BASE, PWM_GEN_2);
 #endif
 
-		    //
-		    // Disable interrupts except for the radio and sensors.
-		    SysTickDisable();
-
-#if GNDMTRS_ACTIVATED || AIRMTRS_ACTIVATED
-            //
-            // Enable trajectory timer.
-            TimerDisable(UPDATE_TIMER, TIMER_B);
-#endif
-
 			break;
 		}
-#if DEBUG
-		default:
-		{
+		case 'A': {
 		    //
-		    // Print out some stuff for debugging.
-		    UARTprintf("Radio reached the default case in\r\n");
-		    UARTprintf("the ProcessRadio function.\r\n");
-
-		    while(1)
-		    {
-		        //
-		        // Loop doing nothing, til this problem is solved.
-		    }
-
+		    // Do nothing, since the system is already armed.
+		    break;
 		}
-#endif
 		}
 	} else { // Arm the System.
 		switch (g_sRxPack.ui8Data[3]) {
@@ -2453,6 +2426,7 @@ void SendPacket(void) {
 		g_Pack.pack.uS5 = false;
 		g_Pack.pack.uS6 = false;
 		g_Pack.pack.payBay = sStatus.bPayDeployed;
+		g_Pack.pack.sysArmed = sStatus.bArmed;
 
 		//
 		// Send the data over the radio.
@@ -2667,6 +2641,10 @@ void WaitForArming(void)
 {
 	TurnOnLED(5);
 
+	SysTickDisable();
+
+    sStatus.bRadioConnected = false;
+
 	while (!sStatus.bArmed) {
 		if (WaitForButtonPress(LEFT_BUTTON))
 				sStatus.bArmed = true;
@@ -2695,76 +2673,3 @@ void WaitForArming(void)
 
 }
 
-void RadioIntHandler3(void) {
-	static uint8_t ui8Index = 0;
-	static uint8_t ui8Magic[40] = { 0 };
-	static uint8_t ui8MagicCount;
-	static bool bValidData = false;
-	static int32_t i32RxChar;
-
-	//
-	// Get the interrupt status and clear the associated interrupt.
-	uint32_t ui32Status = UARTIntStatus(RADIO_UART, true);
-	UARTIntClear(RADIO_UART, ui32Status);
-
-	//
-	// Get the character received and send it to the console.
-	while (UARTCharsAvail(RADIO_UART)) {
-		i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
-		if (ui8Index >= (sizeof(uRxPack)))
-			ui8Index = 0;
-		if (i32RxChar != -1) {
-			if (bValidData) {
-				//
-				// Get the chars over the UART.
-				g_sRxPack.ui8Data[ui8Index++] = (uint8_t) i32RxChar;
-				if (((g_sRxPack.ui8Data[3] == 'T' || g_sRxPack.ui8Data[3] == '0' || g_sRxPack.ui8Data[3] == 'A' || g_sRxPack.ui8Data[3] == 'D') && ui8Index >= sizeof(tGSTPacket))
-						|| (g_sRxPack.ui8Data[3] == 'C'
-								&& ui8Index >= sizeof(tGSCPacket))) {
-					ui8Index = 0;
-					bValidData = false;
-
-					//
-					// Good radio connection. Reset the timer and set the status.
-					sStatus.bRadioConnected = true;
-					TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
-							16000000 / GS_RADIO_RATE);
-
-					//
-					// Process the radio commands.
-					ProcessRadio();
-
-					break;
-				}
-			} else {
-				if (ui8Index > 40)
-					while(1)
-					{
-						TurnOnLED(5);
-						SysCtlDelay(100);
-						TurnOffLED(5);
-						SysCtlDelay(100);
-					}
-				ui8Magic[ui8Index] = (uint8_t) i32RxChar;
-				ui8Index = (ui8Index + 1) % 4;
-				if (ui8MagicCount >= 3) {
-					if (ui8Magic[ui8Index % 4] == 0xFF
-							&& ui8Magic[(ui8Index + 1) % 4] == 0xFF
-							&& ui8Magic[(ui8Index + 2) % 4] == 0xFF
-							&& (ui8Magic[(ui8Index + 3) % 4] == 'T'
-									|| ui8Magic[(ui8Index + 3) % 4] == 'C'
-									|| ui8Magic[(ui8Index + 3) % 4] == '0'
-									|| ui8Magic[(ui8Index +3) % 4] == 'A'
-									|| ui8Magic[(ui8Index + 3) % 4] == 'D')) {
-						g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index + 3) % 4];
-						ui8Index = 4;
-						bValidData = true;
-						ui8MagicCount = 0;
-					}
-				} else {
-					ui8MagicCount++;
-				}
-			}
-		}
-	}
-}

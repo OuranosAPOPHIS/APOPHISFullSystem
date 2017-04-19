@@ -17,7 +17,7 @@
 // This function will update the trajectory of the platform.
 //
 //*****************************************************************************
-void AutoFlyUpdate(void) {
+//void AutoFlyUpdate(void) {
 /*
     float fXdotDes;
     float fYdotDes;
@@ -172,7 +172,7 @@ void AutoFlyUpdate(void) {
     g_PrintFlag = false;
 #endif
 */
-}
+//}
 
 //*****************************************************************************
 //
@@ -180,8 +180,8 @@ void AutoFlyUpdate(void) {
 // and driving.
 //
 //*****************************************************************************
-void AutoDriveUpdate(void)
-{
+//void AutoDriveUpdate(void)
+//{
     //
     // TODO: This is where the control law and stuff will go.
     //
@@ -268,7 +268,7 @@ void AutoDriveUpdate(void)
     // Reset printing loop count for debugging.
     g_PrintFlag = false;
 #endif */
-}
+//}
 
 //*****************************************************************************
 //
@@ -276,8 +276,8 @@ void AutoDriveUpdate(void)
 // and flying.
 //
 //*****************************************************************************
-void ManualFlyUpdate(void)
-{
+//void ManualFlyUpdate(void)
+//{
 /*
     float fDesiredRoll = 0.0f;
     float fDesiredPitch = 0.0f;
@@ -515,13 +515,120 @@ void ManualFlyUpdate(void)
     PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.fAirMtr3Throttle);
     PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.fAirMtr4Throttle);
     */
-}
+//}
 
 //*****************************************************************************
 //
-// Radio interrupt handler as created by Ryan Claus.
+// Radio interrupt handler as created by Brandon Klefman.
 //
 //*****************************************************************************
+/*void RadioIntHandler2(void)
+{
+    int32_t i32RxChar;
+
+    //
+    // Clear the interrupt.
+    uint32_t ui32Status = UARTIntStatus(RADIO_UART, true);
+    UARTIntClear(RADIO_UART, ui32Status);
+
+    while (UARTCharsAvail(RADIO_UART))
+    {
+        if (ui8Index > MaxIndex)
+            MaxIndex = ui8Index;
+
+        //
+        // Get the character from the Radio.
+        i32RxChar = UARTCharGetNonBlocking(RADIO_UART);
+
+        //
+        // Find the magic packet if the data is not valid.
+        if (!bValidData) {
+            ui8Magic[ui8Index % 4] = (uint8_t) i32RxChar;
+            ui8Index = (ui8Index + 1) % 4;
+
+            if ((ui8Magic[(ui8Index) % 4] == 0xFF)
+                    && (ui8Magic[(ui8Index + 1) % 4] == 0xFF)
+                    && (ui8Magic[(ui8Index + 2) % 4] == 0xFF)
+                    && ((ui8Magic[(ui8Index + 3) % 4] == 'C')
+                            || (ui8Magic[(ui8Index + 3) % 4] == 'T')
+                            || (ui8Magic[(ui8Index + 3) % 4] == '0')
+                            || (ui8Magic[(ui8Index + 3) % 4] == 'A')
+                            || (ui8Magic[(ui8Index + 3) % 4] == 'D'))) {
+
+                //
+                // Found the magic packet.
+                bValidData = true;
+
+                g_sRxPack.ui8Data[3] = ui8Magic[(ui8Index + 3) % 4];
+                ui8Index = 4;
+            }
+        }
+        else {
+            //
+            // Found the magic packet. Process the remaining string.
+            switch (g_sRxPack.ui8Data[3])
+            {
+            case 'T':
+            case '0':
+            case 'A':
+            case 'D':
+            {
+                //
+                // Target or Arm/Disarm packet.
+                if (ui8Index < sizeof(g_sRxPack.sTargetPacket)) {
+                    g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
+                    ui8Index++;
+                }
+                else {
+
+                    //
+                    // Finished the packet. Do the processing.
+                    ProcessRadio();
+
+                    //
+                    // Reset the globals.
+                    ui8Magic[0] = 0;
+                    ui8Index = 0;
+                    bValidData = false;
+
+                    g_RadioDone = true;
+
+
+                    sStatus.bRadioConnected = true;
+                    TimerLoadSet(RADIO_TIMER_CHECK, TIMER_A,
+                            16000000 / GS_RADIO_RATE);
+                }
+
+                break;
+            }
+            case 'C':
+            {
+                //
+                // Control packet.
+                if(ui8Index < sizeof(g_sRxPack.sControlPacket)) {
+
+                    g_sRxPack.ui8Data[ui8Index] = (uint8_t)i32RxChar;
+                    ui8Index++;
+                }
+                else {
+
+                    //
+                    // Finished the packet. Do the processing.
+                    ProcessRadio();
+
+                    //
+                    // Reset the globals.
+                    ui8Magic[0] = 0;
+                    ui8Index = 0;
+                    bValidData = false;
+
+                }
+                break;
+            }
+            }
+        }
+    }
+} */
 
 
 
