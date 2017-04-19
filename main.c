@@ -862,15 +862,6 @@ void SysTickIntHandler(void) {
 		// Send the command to the RW motor.
 		Rx24FWrite(GNDMTR2_UART, GNDMTR2_DIRECTION_PORT, GMDMTR2_DIRECTION, 4,
 				txBuffer);
-
-#if DEBUG
-		if (g_PrintFlag)
-		{
-			UARTprintf("Driving.\r\n");
-			UARTprintf("RW Throttle: %d\r\nLW Throttle: %d\r\n", g_ui32RWThrottle,
-					g_ui32LWThrottle);
-		}
-#endif
 #endif
 		break;
 	}
@@ -910,7 +901,7 @@ void SysTickIntHandler(void) {
             //
             // Desired angular velocity.
             fPitchDot = fPitchError * fKd;
-            fRollDot = fRollError * fKp;
+            fRollDot = fRollError * fKd;
 
             //
             // Desired angular accelerations.
