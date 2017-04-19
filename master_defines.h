@@ -52,4 +52,10 @@
 #define BOOSTERPACK2 true
 #define BOOSTERPACK3 false
 
+//
+// Parameter which selects whether to use the DCM
+// created by TI or the custom DCM created by us.
+// True - use custom DCM created by us.
+#define CUSTOM_ATTITUDE false
+
 #endif /* MASTER_DEFINES_H_ */

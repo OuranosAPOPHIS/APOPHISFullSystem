@@ -2,7 +2,7 @@
  * Project: Aerial Platform for Overland Haul and Import System (APOPHIS)
  *
  *  Created On: Jan 20, 2017
- *  Last Updated: April 18, 2017
+ *  Last Updated: April 19, 2017
  *      Author(s): Brandon Klefman
  *
  *      Purpose: Flight computer for the APOPHIS platform.
@@ -46,8 +46,10 @@
 #include "sensors/bmi160.h"
 #include "sensors/i2c_driver.h"
 #include "sensors/bme280.h"
+#include "sensors/attitude_estimation.h"
 
 #include "motors/vehicle_properties.h"
+#include "motors/gnd_mtrs.h"
 
 //
 // Sensor-Boosterpack Calibration data.
@@ -58,8 +60,6 @@
 #elif BOOSTERPACK3
 #include "sensors/accel_gyro_cal_data3.h"
 #endif
-
-#include "motors/gnd_mtrs.h"
 
 //*****************************************************************************
 //
@@ -256,6 +256,10 @@ bool g_PrintIMUData = false;
 //
 // Variable to determine whether to print the raw accel and gyro data to the terminal.
 bool g_PrintRawBMIData = false;
+
+//
+// Global structure for attitude estimation.
+sAttitudeData sAttData;
 
 //*****************************************************************************
 //
@@ -606,10 +610,20 @@ int main(void) {
    IntMasterDisable();
 #endif
 
+#if !CUSTOM_ATTITUDE
    //
    // Initialize the DCM.
    CompDCMInit(&g_sCompDCMInst, 1.0f / DCM_UPDATE_RATE, 0.2f, 0.6f, 0.2f);
    g_bDCMStarted = false;
+#else
+   //
+   // Set up the gyro weighting for the attitude estimation.
+   InitAttitude(&sAttData, 0.75);
+
+   //
+   // Initialize the heading.
+   InitHeading(&sAttData);
+#endif
 #endif
 
    //
@@ -1498,6 +1512,75 @@ void MMA8452QIntHandler(void)
 		g_IMUDataFlag = true;
 	}
 }
+
+//*****************************************************************************
+//
+// Updates the DCM at a consistent rate of 25Hz.
+//
+//*****************************************************************************
+#if !CUSTOM_ATTITUDE
+void DCMUpdateTimer(void) {
+    uint32_t ui32Status;
+
+    //
+    // Get the interrupt status.
+    ui32Status = TimerIntStatus(DCM_TIMER, true);
+
+    //
+    // Clear the interrupt.
+    TimerIntClear(DCM_TIMER, ui32Status);
+
+    //
+    // Check if this is the first time.
+    if (g_bDCMStarted == 0) {
+        //
+        // Start the DCM.
+        CompDCMAccelUpdate(&g_sCompDCMInst, sSensStatus.fCurrentAccelX,
+                           sSensStatus.fCurrentAccelY, sSensStatus.fCurrentAccelZ);
+
+        CompDCMGyroUpdate(&g_sCompDCMInst, sSensStatus.fCurrentGyroX, sSensStatus.fCurrentGyroY,
+                          sSensStatus.fCurrentGyroZ);
+
+        CompDCMMagnetoUpdate(&g_sCompDCMInst, g_fMagData[0], g_fMagData[1],
+                g_fMagData[2]);
+
+        CompDCMStart(&g_sCompDCMInst);
+
+        g_bDCMStarted = true;
+    } else {
+        //
+        // DCM is already started, just update it.
+        CompDCMAccelUpdate(&g_sCompDCMInst,sSensStatus.fCurrentAccelX,
+                           sSensStatus.fCurrentAccelY, sSensStatus.fCurrentAccelZ);
+
+        CompDCMGyroUpdate(&g_sCompDCMInst, sSensStatus.fCurrentGyroX, sSensStatus.fCurrentGyroY,
+                          sSensStatus.fCurrentGyroZ);
+
+        CompDCMMagnetoUpdate(&g_sCompDCMInst, g_fMagData[0], g_fMagData[1],
+                g_fMagData[2]);
+
+        CompDCMUpdate(&g_sCompDCMInst);
+    }
+
+    //
+    // Get the Euler angles.
+    CompDCMComputeEulers(&g_sCompDCMInst, &sStatus.fRoll, &sStatus.fPitch,
+            &sStatus.fYaw);
+
+    //
+    // Flip the roll axis. Positive is roll right.
+    sStatus.fRoll *= -1;
+
+    //
+    // Convert Eulers to degrees. 180/PI = 57.29...
+    // Convert Yaw to 0 to 360 to approximate compass headings.
+    sStatus.fRoll *= 57.295779513082320876798154814105f;
+    sStatus.fPitch *= 57.295779513082320876798154814105f;
+    sStatus.fYaw *= 57.295779513082320876798154814105f;
+    if (sStatus.fYaw < 0)
+        sStatus.fYaw += 360.0f;
+}
+#endif
 
 /*
  * Other functions used by main.
@@ -2475,6 +2558,12 @@ void ProcessIMUData(void) {
 		g_fMagData[1] = ((i8MagData[1] / MAGLSB) - g_MagBias[1]) / 1e6;
 		g_fMagData[2] = ((i8MagData[2] / MAGLSB) - g_MagBias[2]) / 1e6;
 
+#if CUSTOM_ATTITUDE
+        //
+        // Update the mag data in the struct.
+        UpdateMag(&sAttData, g_fMagData[0], g_fMagData[1], g_fMagData[2]);
+#endif
+
 		//
 		// Blink the LED 1 to indicate sensor is working.
 		if (g_LED1On) {
@@ -2528,12 +2617,41 @@ void ProcessIMUData(void) {
 		sSensStatus.fCurrentAccelX = fAccelDataUnCal[0] * SAX + fAccelDataUnCal[1] * MAXY + fAccelDataUnCal[2] * MAXZ;
 		sSensStatus.fCurrentAccelY = fAccelDataUnCal[0] * MAYX + fAccelDataUnCal[1] * SAY + fAccelDataUnCal[2] * MAYZ;
 		sSensStatus.fCurrentAccelZ = fAccelDataUnCal[0] * MAZX + fAccelDataUnCal[1] * MAZY + fAccelDataUnCal[2] * SAZ;
-	}
 
+#if CUSTOM_ATTITUDE
+        //
+        // Update structure data.
+        UpdateAccel(&sAttData, sSensStatus.fCurrentAccelX, sSensStatus.fCurrentAccelY, sSensStatus.fCurrentAccelZ);
+        UpdateGyro(&sAttData, sSensStatus.fCurrentGyroX, sSensStatus.fCurrentGyroY, sSensStatus.fCurrentGyroZ);
+
+        if (true) {
+            //
+            // static update.
+            StaticUpdateAttitude(&sAttData);
+        }
+        else {
+            //
+            // dynamic update.
+            DynamicUpdateAttitude(&sAttData);
+        }
+
+        //
+        // Update the Euler Angles.
+        UpdateEulers(&sAttData);
+
+        //
+        // Assign the values.
+        sStatus.fRoll = sAttData.fRoll;
+        sStatus.fPitch = sAttData.fPitch;
+        sStatus.fYaw = sAttData.fYaw;
+#else
 	//
 	// Enable the DCM if it has not been started yet.
 	if (g_bDCMStarted == 0)
 		TimerEnable(DCM_TIMER, TIMER_A);
+#endif
+
+	}
 
 #if DEBUG
 	//

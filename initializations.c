@@ -72,6 +72,7 @@ extern void MMA8452QIntHandler(void);
 extern void AutoDriveUpdate(void);
 extern void AutoFlyUpdate(void);
 extern void ManualFlyUpdate(void);
+extern void DCMUpdateTimer(void);
 
 /*
  * LED Initialization function.
@@ -626,13 +627,14 @@ void InitIMU(uint8_t *offsetCompensation) {
 	// Enable the I2C module.
 	I2CMasterEnable(BOOST_I2C);
 
+#if !CUSTOM_ATTITUDE
 	//
 	// Enable the timer.
 	SysCtlPeripheralEnable(DCM_TIMER_PERIPH);
 
 	//
-	// Configure the timer to run at 100 Hz for both
-	// the compDCMupdate and updateTrajectory().
+	// Configure the timer to run at 100 Hz for
+	// the compDCMupdate.
 	TimerClockSourceSet(DCM_TIMER, TIMER_CLOCK_PIOSC);
 	TimerConfigure(DCM_TIMER, TIMER_CFG_SPLIT_PAIR | TIMER_CFG_A_PERIODIC |
 			TIMER_CFG_B_PERIODIC);
@@ -643,8 +645,8 @@ void InitIMU(uint8_t *offsetCompensation) {
 	TimerIntClear(DCM_TIMER, TIMER_TIMA_TIMEOUT);
 	TimerIntEnable(DCM_TIMER, TIMER_TIMA_TIMEOUT);
 	IntEnable(DCM_TIMER_INT);
-	//TimerIntRegister(DCM_TIMER, TIMER_A, DCMUpdateTimer);
-
+	TimerIntRegister(DCM_TIMER, TIMER_A, DCMUpdateTimer);
+#endif
 
 	//
 	// Before calling the BMI160 initialize function, make sure the I2C
