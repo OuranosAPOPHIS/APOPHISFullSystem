@@ -12,7 +12,7 @@
 
 //
 // Zero and maximum cmd values for the air motors.
-#define ZEROTHROTTLE 2204
+#define ZEROTHROTTLE 2200
 #define MAXTHROTTLE 3500
 
 //

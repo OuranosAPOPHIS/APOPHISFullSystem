@@ -8,7 +8,7 @@
 <stringAttribute key="com.ti.ccstudio.debug.debugModel.ATTR_PROJECT.Stellaris In-Circuit Debug Interface/CORTEX_M4_0" value="APOPHIS v1.0"/>
 <stringAttribute key="com.ti.ccstudio.debug.debugModel.ATTR_PROJECT.Stellaris In-Circuit Debug Interface_0/CORTEX_M4_0" value="APOPHIS v1.0"/>
 <stringAttribute key="com.ti.ccstudio.debug.debugModel.ATTR_TARGET_CONFIG" value="${target_config_active_default:APOPHIS v1.0}"/>
-<stringAttribute key="com.ti.ccstudio.debug.debugModel.MRU_PROGRAM.Stellaris In-Circuit Debug Interface/CORTEX_M4_0" value="C:/TivaWare\TM4C1294XL\APOPHIS\APOPHIS Full System\APOPHISFullSystem\Debug\APOPHIS v1.0.out"/>
+<stringAttribute key="com.ti.ccstudio.debug.debugModel.MRU_PROGRAM.Stellaris In-Circuit Debug Interface/CORTEX_M4_0" value="P:/git\APOPHISFullSystem\Debug\APOPHIS v1.0.out"/>
 <stringAttribute key="com.ti.ccstudio.debug.debugModel.MRU_PROGRAM.Stellaris In-Circuit Debug Interface_0/CORTEX_M4_0" value="C:/TivaWare\TM4C1294XL\examples\boards\ek-tm4c1294xl\APOPHIS v1.0\Debug\APOPHIS v1.0.out"/>
 <mapAttribute key="com.ti.ccstudio.debug.ui.displayFormats">
 <mapEntry key="Stellaris In-Circuit Debug Interface/CORTEX_M4_0@##separator##@0" value="32-Bit Hex - C Style"/>

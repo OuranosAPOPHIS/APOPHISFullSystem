@@ -14,7 +14,7 @@
 //
 // Controls whether the output to the console is
 // on or off.
-#define DEBUG true
+#define DEBUG false
 
 //
 // These defines determine what sensors/motors/etc.
@@ -57,5 +57,7 @@
 // created by TI or the custom DCM created by us.
 // True - use custom DCM created by us.
 #define CUSTOM_ATTITUDE false
+
+#define STABILITY false
 
 #endif /* MASTER_DEFINES_H_ */

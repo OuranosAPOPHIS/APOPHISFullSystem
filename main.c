@@ -188,6 +188,7 @@ typedef struct {
 	int32_t i32RWThrottlePerc;
 	int32_t i32LWThrottlePerc;
 	uint32_t ui32AirMtrThrottle;
+	uint32_t ui32PrevAirMtrThrottle;
 	uint32_t ui32AirMtr1Throttle;
 	uint32_t ui32AirMtr2Throttle;
 	uint32_t ui32AirMtr3Throttle;
@@ -480,6 +481,7 @@ int main(void) {
     sThrottle.ui32AirMtr2Throttle = ZEROTHROTTLE;
     sThrottle.ui32AirMtr3Throttle = ZEROTHROTTLE;
     sThrottle.ui32AirMtr4Throttle = ZEROTHROTTLE;
+    sThrottle.ui32PrevAirMtrThrottle = 0;
 
     sThrottle.ui16GndMtrRWThrottle = 0x0000;
     sThrottle.ui16GndMtrLWThrottle = 0x0000;
@@ -867,6 +869,7 @@ void SysTickIntHandler(void) {
 	}
 		case 'F': { // Flying
 #if AIRMTRS_ACTIVATED
+#if STABILITY
 			float fPitchError, fRollError, fPitchDotDot, fRollDotDot;
 			float fPitchDot, fRollDot;
             float fMx, fMy, fMz, fFz;
@@ -927,6 +930,23 @@ void SysTickIntHandler(void) {
             sThrottle.ui32AirMtr2Throttle = (uint32_t)(fTh2 * THRUST_CMD_RATIO + ZEROTHROTTLE);
             sThrottle.ui32AirMtr3Throttle = (uint32_t)(fTh3 * THRUST_CMD_RATIO + ZEROTHROTTLE);
             sThrottle.ui32AirMtr4Throttle = (uint32_t)(fTh4 * THRUST_CMD_RATIO + ZEROTHROTTLE);
+#else
+            //
+            // Check to make sure throttle doesn't increase by more than 1% per iteration.
+            // Or 25% throttle per second.
+            if (sThrottle.ui32AirMtrThrottle > (sThrottle.ui32PrevAirMtrThrottle + 2))
+            	sThrottle.ui32AirMtrThrottle = sThrottle.ui32PrevAirMtrThrottle + 2;
+
+            //
+		   // Re-assign the prev throttle.
+		   sThrottle.ui32PrevAirMtrThrottle = sThrottle.ui32AirMtrThrottle;
+
+            //
+            // Just use commanded throttle for all motors.
+            sThrottle.ui32AirMtr1Throttle = (uint32_t)(g_ui32ThrottleIncrement * sThrottle.ui32AirMtrThrottle + ZEROTHROTTLE);
+            sThrottle.ui32AirMtr2Throttle = (uint32_t)(g_ui32ThrottleIncrement * sThrottle.ui32AirMtrThrottle + ZEROTHROTTLE);
+            sThrottle.ui32AirMtr3Throttle = (uint32_t)(g_ui32ThrottleIncrement * sThrottle.ui32AirMtrThrottle + ZEROTHROTTLE);
+            sThrottle.ui32AirMtr4Throttle = (uint32_t)(g_ui32ThrottleIncrement * sThrottle.ui32AirMtrThrottle + ZEROTHROTTLE);
 
             //
             // Send the commands to the motors.
@@ -934,6 +954,7 @@ void SysTickIntHandler(void) {
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_2, sThrottle.ui32AirMtr2Throttle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_3, sThrottle.ui32AirMtr3Throttle);
             PWMPulseWidthSet(PWM0_BASE, MOTOR_OUT_4, sThrottle.ui32AirMtr4Throttle);
+#endif
 #endif
             break;
 		}
